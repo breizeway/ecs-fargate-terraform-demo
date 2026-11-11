@@ -1,0 +1,23 @@
+[project]
+name = "ecs-fargate-demo"
+version = "0.1.0"
+description = "Small Flask service used to demonstrate container builds and an AWS ECS Fargate deployment with OpenTofu"
+requires-python = ">=3.14"
+dependencies = [
+    "flask>=3.1,<3.2",
+    "gunicorn>=26,<27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+]
+
+[tool.uv]
+# An application, not a library: uv manages dependencies only.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Lets `pytest` (not only `python -m pytest`) import the `app` package.
+pythonpath = ["."]
