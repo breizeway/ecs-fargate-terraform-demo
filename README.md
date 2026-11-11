@@ -3,9 +3,8 @@
 A small Python web service used to practise building a container image and
 deploying it to AWS ECS Fargate with OpenTofu (Terraform-compatible).
 
-> **Status: work in progress.** This repository is being built in small,
-> reviewable pull requests. The service itself lands first; the container image,
-> infrastructure code and CI follow. See the [roadmap](#roadmap).
+> **Status: work in progress.** The service itself lands first; the container
+> image, infrastructure code and CI follow. See the [roadmap](#roadmap).
 
 ## The service
 
