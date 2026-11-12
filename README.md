@@ -112,6 +112,48 @@ Design notes:
 Check the code with `tofu fmt -check`, `tofu validate` and
 `trivy config --severity HIGH,CRITICAL infra`.
 
+### Main stack: network and image registry
+
+`infra/` holds the main stack, with its state stored in the bootstrap bucket.
+
+```bash
+cd infra
+cp backend.hcl.example backend.hcl    # set `bucket` to the bootstrap output
+tofu init -backend-config=backend.hcl
+tofu plan
+tofu apply
+```
+
+It creates:
+
+- **A VPC** with two public subnets in different availability zones, an internet
+  gateway and a route table.
+- **Security groups:** the load balancer accepts HTTP from the internet and may
+  only talk to the app; the app accepts traffic *only from the load balancer's
+  security group* and may only make outbound HTTPS requests. The VPC's default
+  security group is emptied.
+- **An ECR repository** with immutable tags (a pushed tag can never be
+  overwritten), scan-on-push and a lifecycle policy that keeps the last 10 images.
+
+Push the image once the registry exists (needs an AWS login and Docker):
+
+```bash
+AWS_PROFILE=<profile> make push              # tag: local-<timestamp>
+AWS_PROFILE=<profile> make push TAG=v1       # or choose a tag
+```
+
+Design trade-offs, recorded as inline scanner exceptions next to the resources:
+
+- **No NAT gateway.** A NAT gateway costs roughly $30+/month, so tasks will run in
+  public subnets and reach ECR and CloudWatch over the internet gateway
+  (egress limited to port 443). A production setup should use private subnets with
+  VPC endpoints or a NAT gateway so tasks have no public IP.
+- **HTTP only** on the load balancer (added in the next change). HTTPS needs a
+  certificate and a domain name.
+
+The VPC, subnets, internet gateway, route table and security groups are free;
+ECR storage is a few cents per GB-month.
+
 ## Project layout
 
 ```
@@ -120,8 +162,9 @@ tests/             Unit tests (pytest)
 gunicorn.conf.py   gunicorn settings
 pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
-Makefile           test / build / run / scan shortcuts
+Makefile           test / build / run / scan / push shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
+infra/             OpenTofu main stack: network, ECR (more to come)
 ```
 
 ## Roadmap
@@ -129,7 +172,7 @@ infra/bootstrap/   OpenTofu: S3 bucket for remote state
 - [x] Flask service, tests, locked dependencies
 - [x] Container image (multi-stage Dockerfile, non-root, vulnerability scan)
 - [x] State backend bootstrap (S3 bucket with versioning, encryption, public access blocked)
-- [ ] Network and image registry (VPC, subnets, security groups, ECR)
+- [x] Network and image registry (VPC, subnets, security groups, ECR)
 - [ ] Load balancer and ECS Fargate service
 - [ ] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
 - [ ] Architecture diagram, cost notes and design trade-offs

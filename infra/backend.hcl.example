@@ -1,0 +1,6 @@
+# Copy to backend.hcl (which is gitignored) and fill in your own bucket name.
+# The name comes from:  cd infra/bootstrap && tofu output state_bucket_name
+#
+#   tofu init -backend-config=backend.hcl
+
+bucket = "tfstate-REPLACE-ME"
