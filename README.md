@@ -74,6 +74,44 @@ All optional environment variables:
 Worker count is set explicitly rather than derived from the CPU count: inside a
 container, `os.cpu_count()` reports the host's CPUs, not the container's limit.
 
+## Infrastructure
+
+Infrastructure is defined with [OpenTofu](https://opentofu.org/) (HCL is
+compatible with Terraform). It needs OpenTofu 1.10 or newer, AWS credentials,
+and (for `trivy config`) Trivy.
+
+### State bootstrap
+
+OpenTofu records what it manages in a *state file*. The main stack (added in a
+later change) stores its state remotely in S3 so it is shared, versioned and
+locked. `infra/bootstrap` creates that bucket once:
+
+```bash
+cd infra/bootstrap
+tofu init
+tofu apply
+tofu output state_bucket_name     # the main stack is pointed at this bucket
+```
+
+The bucket has versioning, server-side encryption (AES256), all public access
+blocked, and a policy that denies non-TLS requests. `prevent_destroy` guards it
+against accidental deletion.
+
+Design notes:
+
+- **Chicken-and-egg:** the bucket cannot hold its own state before it exists, so
+  this stack uses a local state file (gitignored). If that file is lost, the
+  bucket survives and can be re-attached with `tofu import`.
+- **No account-specific names in the repo:** the bucket name has a random suffix
+  and is supplied to the main stack at `init` time, not committed.
+- **Accepted exception:** S3-managed keys (AES256) are used instead of a
+  customer-managed KMS key. `trivy config infra` would otherwise flag this
+  (AWS-0132); the exception is recorded next to the resource. A production or
+  regulated setup should use a KMS key.
+
+Check the code with `tofu fmt -check`, `tofu validate` and
+`trivy config --severity HIGH,CRITICAL infra`.
+
 ## Project layout
 
 ```
@@ -83,13 +121,14 @@ gunicorn.conf.py   gunicorn settings
 pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
 Makefile           test / build / run / scan shortcuts
+infra/bootstrap/   OpenTofu: S3 bucket for remote state
 ```
 
 ## Roadmap
 
 - [x] Flask service, tests, locked dependencies
 - [x] Container image (multi-stage Dockerfile, non-root, vulnerability scan)
-- [ ] State backend bootstrap (S3 bucket with versioning, encryption, locking)
+- [x] State backend bootstrap (S3 bucket with versioning, encryption, public access blocked)
 - [ ] Network and image registry (VPC, subnets, security groups, ECR)
 - [ ] Load balancer and ECS Fargate service
 - [ ] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
