@@ -1,0 +1,38 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OpenTofu / Terraform: local state and plugins must never be committed
+# (state can contain secrets). The dependency lock file IS committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+.terraformrc
+terraform.rc
+# Account-specific backend settings (see infra/backend.hcl.example)
+backend.hcl
