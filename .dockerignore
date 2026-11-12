@@ -1,0 +1,17 @@
+# Keep the build context small and free of anything private.
+.git
+.gitignore
+.github
+.DS_Store
+.env*
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+
+# Not needed inside the image
+infra
+Makefile
+Dockerfile
+.dockerignore
+*.md
