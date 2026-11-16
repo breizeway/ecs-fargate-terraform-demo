@@ -7,7 +7,7 @@ resource "aws_ecr_repository" "app" {
   # Lab setting: lets `tofu destroy` delete the repository even when it still holds images. https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ecr_repository
   force_delete = true
 
-  # Each push is scanned for known vulnerabilities. https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html
+  # Catches known vulnerabilities in an image before it is ever deployed. https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html
   image_scanning_configuration {
     scan_on_push = true
   }

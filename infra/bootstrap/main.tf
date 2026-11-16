@@ -1,4 +1,4 @@
-# Creates the S3 bucket that stores OpenTofu state for ../ (this stack keeps its own state in a local, gitignored file).
+# Keeps its own state in a local, gitignored file: the state bucket cannot hold its own state before it exists. https://opentofu.org/docs/language/state/
 
 terraform {
   required_version = ">= 1.10"
@@ -95,7 +95,7 @@ data "aws_iam_policy_document" "tls_only" {
   }
 }
 
-# Refuse any request that is not made over TLS. https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html
+# Plain-HTTP requests could expose state in transit, so deny them. https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html
 resource "aws_s3_bucket_policy" "state" {
   bucket = aws_s3_bucket.state.id
   policy = data.aws_iam_policy_document.tls_only.json

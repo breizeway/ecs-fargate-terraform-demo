@@ -1,7 +1,14 @@
 """Tiny demo service: the platform around it is the point, not the app.
 
-GET /health is the load balancer's liveness check. GET / reports facts about
-where the process is running, so a browser refresh shows which container answered.
+GET /health is the load balancer's liveness check. GET / reports where the
+process runs, so a browser refresh shows which container answered:
+
+    hostname  which container answered
+    uid       0 would mean root; anything else is an unprivileged user
+    machine   CPU architecture (aarch64 = ARM)
+    distro    the container's own OS
+    kernel    the host's kernel, which all containers on a host share
+    version   the release (the image tag)
 """
 
 import os
@@ -24,18 +31,20 @@ def create_app() -> Flask:
 
     # Cheap and dependency-free, so a database blip can't mark every container unhealthy. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
     @flask_app.get("/health")
-    @flask_app.get("/healthz")  # temporary alias: remove once the load balancer checks /health
+    # Temporary alias so the load balancer can switch paths without downtime (parallel change). https://martinfowler.com/bliki/ParallelChange.html
+    @flask_app.get("/healthz")
     def health():
         return jsonify(status="ok")
 
     @flask_app.get("/")
     def index():
+        # Containers share the host's kernel, which is why `kernel` differs from `distro`. https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/
         return jsonify(
-            hostname=socket.gethostname(),  # which container answered
-            uid=os.getuid(),  # not 0, so not root
-            machine=platform.machine(),  # CPU architecture (aarch64 = ARM)
-            distro=distro(),  # the container's OS
-            kernel=platform.release(),  # the host's kernel: containers share it
+            hostname=socket.gethostname(),
+            uid=os.getuid(),
+            machine=platform.machine(),
+            distro=distro(),
+            kernel=platform.release(),
             version=os.environ.get("SERVICE_VERSION", "dev"),
         )
 
