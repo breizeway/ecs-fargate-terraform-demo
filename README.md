@@ -12,7 +12,7 @@ A Flask app served by gunicorn. It exposes two endpoints:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /health` | Liveness check. Returns `{"status": "ok"}`. (`/healthz` is a temporary alias while the load balancer switches over.) |
+| `GET /health` | Liveness check. Returns `{"status": "ok"}`. |
 | `GET /` | Reports where the process runs: hostname (which container answered), uid (non-root), CPU architecture, distro, kernel (shared with the host) and build version. |
 
 ## Run it locally

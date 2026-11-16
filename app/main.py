@@ -31,8 +31,6 @@ def create_app() -> Flask:
 
     # Cheap and dependency-free, so a database blip can't mark every container unhealthy. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
     @flask_app.get("/health")
-    # Temporary alias: the load balancer still checks /healthz until its health check path is changed. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
-    @flask_app.get("/healthz")
     def health():
         return jsonify(status="ok")
 
