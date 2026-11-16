@@ -1,0 +1,88 @@
+name: Deploy
+
+# Pushing a tag like v5 deploys it to production, after you approve it in GitHub. https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+on:
+  push:
+    tags: ["v*"]
+
+# id-token lets the job request the signed token that AWS exchanges for short-lived credentials. https://docs.github.com/en/actions/reference/security/oidc
+permissions:
+  contents: read
+  id-token: write
+
+# Two deploys at once would fight over the state lock, so the second waits for the first. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-west-2
+  IMAGE_TAG: ${{ github.ref_name }}
+
+jobs:
+  deploy:
+    name: Build, push and deploy
+    runs-on: ubuntu-24.04-arm
+    # The environment's required reviewer is the approval step, and the AWS trust policy accepts only this environment. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      # Only code that already went through review and CI on main can be released. https://git-scm.com/docs/git-merge-base
+      - name: Refuse tags that are not on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1.0.8
+        with:
+          tofu_version: 1.13.9
+      - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+
+      - name: Connect to the state bucket
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: |
+          echo "bucket = \"$TF_STATE_BUCKET\"" > infra/backend.hcl
+          tofu -chdir=infra init -input=false -backend-config=backend.hcl
+
+      # Action logs are public, so the load balancer address is masked before anything prints it. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
+      - name: Hide the load balancer address in logs
+        run: echo "::add-mask::$(tofu -chdir=infra output -raw app_url | sed 's#^http://##')"
+
+      - run: make test
+      - run: make scan
+
+      - name: Build and push the image
+        run: make push TAG="$IMAGE_TAG"
+
+      # Fails before the service is touched if the image is missing, the mistake that broke the v3 rollout. https://docs.aws.amazon.com/cli/latest/reference/ecr/describe-images.html
+      - name: Confirm the image is in the registry
+        run: aws ecr describe-images --repository-name ecs-fargate-demo --image-ids imageTag="$IMAGE_TAG" --query 'imageDetails[0].imageTags' --output text
+
+      - name: Plan
+        run: tofu -chdir=infra plan -input=false -var image_tag="$IMAGE_TAG" -out=tfplan
+
+      - name: Apply
+        run: tofu -chdir=infra apply -input=false tfplan
+
+      # The rollout is rolling, so wait until ECS reports the service stable. https://docs.aws.amazon.com/cli/latest/reference/ecs/wait/services-stable.html
+      - name: Wait for the rollout
+        run: aws ecs wait services-stable --cluster ecs-fargate-demo --services ecs-fargate-demo
+
+      # If the circuit breaker rolled back, the service is stable but still on the old version, and this step fails. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-circuit-breaker.html
+      - name: Smoke test
+        run: |
+          URL=$(tofu -chdir=infra output -raw app_url)
+          bad=0
+          for i in 1 2 3 4 5 6; do
+            v=$(curl -sf -m 5 "$URL/" | python3 -c 'import sys,json; print(json.load(sys.stdin)["version"])') || v=FAIL
+            echo "answer $i: $v"
+            [ "$v" = "$IMAGE_TAG" ] || bad=1
+          done
+          exit $bad
