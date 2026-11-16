@@ -219,10 +219,20 @@ pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
 Makefile           test / build / run / scan / push / check shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
-infra/             OpenTofu main stack, one file per concept: network, firewall,
-                   registry, front_door, identity, runner (plus versions, variables,
-                   and main.tf for the provider and outputs)
+infra/             OpenTofu main stack (one file per AWS service area, see below)
 ```
+
+### Where things live (`infra/`)
+
+| File | What it configures |
+|---|---|
+| `network.tf` | VPC, two public subnets, internet gateway, route table |
+| `security_groups.tf` | Firewall rules: who may connect to what |
+| `ecr.tf` | Image repository and its lifecycle policy |
+| `load_balancer.tf` | Public entry point: load balancer, listener, target group with the health check |
+| `iam.tf` | The role ECS uses to pull the image and write logs |
+| `ecs.tf` | Log group, cluster, task definition and service (keeps two copies running) |
+| `versions.tf`, `variables.tf`, `outputs.tf`, `main.tf` | Tool and provider versions with the state backend, inputs, outputs, and the provider |
 
 ## Roadmap
 
