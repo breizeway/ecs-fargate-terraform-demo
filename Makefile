@@ -3,7 +3,7 @@ VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PORT    ?= 8000
 
 .DEFAULT_GOAL := help
-.PHONY: help test build run scan push
+.PHONY: help test build run scan push check
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-8s %s\n", $$1, $$2}'
@@ -27,3 +27,9 @@ push: build ## Push the image to ECR. Needs a login: AWS_PROFILE=<profile> make 
 	docker tag $(IMAGE):dev "$$URL:$$TAG" && \
 	docker push "$$URL:$$TAG" && \
 	echo "pushed tag: $$TAG"
+
+check: ## Ask the live site for its version 6 times (needs AWS_PROFILE and a deployed stack)
+	@URL=$$(cd infra && tofu output -raw app_url) && \
+	for i in 1 2 3 4 5 6; do \
+	  curl -s -m 5 "$$URL/" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d["hostname"])' || echo FAIL; \
+	done

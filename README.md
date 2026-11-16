@@ -189,7 +189,7 @@ tofu output app_url                                     # open this in a browser
 deployments are a single `make push` followed by `tofu apply -var image_tag=<tag>`.)
 
 Refreshing the page shows a different `hostname` as the load balancer alternates
-between the two tasks.
+between the two tasks. `make check` does the same from the terminal (6 requests).
 
 #### Tear down
 
@@ -217,7 +217,7 @@ tests/             Unit tests (pytest)
 gunicorn.conf.py   gunicorn settings
 pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
-Makefile           test / build / run / scan / push shortcuts
+Makefile           test / build / run / scan / push / check shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
 infra/             OpenTofu main stack, one file per concept: network, firewall,
                    registry, front_door, identity, runner (plus versions, variables,
