@@ -10,8 +10,9 @@ def client():
     return flask_app.test_client()
 
 
-def test_healthz_ok(client):
-    resp = client.get("/healthz")
+@pytest.mark.parametrize("path", ["/health", "/healthz"])
+def test_health_ok(client, path):
+    resp = client.get(path)
     assert resp.status_code == 200
     assert resp.get_json() == {"status": "ok"}
 

@@ -1,6 +1,6 @@
 """Tiny demo service: the platform around it is the point, not the app.
 
-GET /healthz is the load balancer's liveness check. GET / reports facts about
+GET /health is the load balancer's liveness check. GET / reports facts about
 where the process is running, so a browser refresh shows which container answered.
 """
 
@@ -23,8 +23,9 @@ def create_app() -> Flask:
     flask_app = Flask(__name__)
 
     # Cheap and dependency-free, so a database blip can't mark every container unhealthy. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
-    @flask_app.get("/healthz")
-    def healthz():
+    @flask_app.get("/health")
+    @flask_app.get("/healthz")  # temporary alias: remove once the load balancer checks /health
+    def health():
         return jsonify(status="ok")
 
     @flask_app.get("/")
