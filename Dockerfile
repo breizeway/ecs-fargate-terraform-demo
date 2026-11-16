@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
-# Debian slim, not Alpine: most Python wheels target glibc, and musl forces slow source builds. https://pythonspeed.com/articles/alpine-docker-python/
-FROM python:3.14-slim AS builder
+# One place to bump the Python version, used by both stages. https://docs.docker.com/reference/dockerfile/
+ARG PYTHON_VERSION=3.14
+
+# Debian slim, not Alpine: Alpine uses musl instead of glibc, so software often hits compatibility issues. https://github.com/docker-library/docs/blob/master/python/README.md
+FROM python:${PYTHON_VERSION}-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 
@@ -26,7 +29,7 @@ COPY app ./app
 COPY tests ./tests
 RUN python -m pytest -q
 
-FROM python:3.14-slim AS runtime
+FROM python:${PYTHON_VERSION}-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH"

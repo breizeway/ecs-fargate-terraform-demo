@@ -15,6 +15,6 @@ worker_tmp_dir = "/dev/shm" if os.path.isdir("/dev/shm") else None
 graceful_timeout = 20
 timeout = 30
 
-# Log to stdout/stderr and let the platform collect it. https://12factor.net/logs
+# '-' logs to stdout/stderr instead of files, so the platform can collect the output. https://gunicorn.org/reference/settings/#accesslog
 accesslog = "-"
 errorlog = "-"
