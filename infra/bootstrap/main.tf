@@ -5,6 +5,23 @@
 # is gitignored. If it is lost the bucket still exists and can be re-attached
 # with `tofu import`.
 
+terraform {
+  required_version = ">= 1.10" # S3-native state locking (used by ../) needs 1.10+
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+}
+
+variable "region" {
+  description = "AWS region for the state bucket"
+  type        = string
+  default     = "us-west-2"
+}
+
 provider "aws" {
   region = var.region
 
@@ -94,4 +111,9 @@ resource "aws_s3_bucket_policy" "state" {
   # AWS rejects bucket-policy changes that race with the public access block;
   # there is no attribute reference between them, so the order is explicit.
   depends_on = [aws_s3_bucket_public_access_block.state]
+}
+
+output "state_bucket_name" {
+  description = "Name of the S3 bucket that stores state for the main stack"
+  value       = aws_s3_bucket.state.id
 }
