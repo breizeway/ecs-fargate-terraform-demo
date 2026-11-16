@@ -23,7 +23,7 @@ Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.14.
 uv sync                                  # create .venv from uv.lock
 uv run pytest                            # run the tests
 uv run gunicorn --config gunicorn.conf.py app.main:application
-curl localhost:8000/healthz
+curl localhost:8000/health
 ```
 
 ## Container image
@@ -159,7 +159,7 @@ ECR storage is a few cents per GB-month.
 The rest of the main stack runs the container:
 
 - **Application Load Balancer** across both subnets, with a target group that
-  health-checks `GET /healthz` every 15 seconds.
+  health-checks `GET /health` every 15 seconds.
 - **ECS cluster, task definition and service** on Fargate: two tasks (one per
   availability zone), ARM64, 0.25 vCPU / 0.5 GB each, registered with the load
   balancer. Rolling deployments never drop below the desired count, and a
@@ -189,7 +189,7 @@ tofu output app_url                                     # open this in a browser
 deployments are a single `make push` followed by `tofu apply -var image_tag=<tag>`.)
 
 Refreshing the page shows a different `hostname` as the load balancer alternates
-between the two tasks.
+between the two tasks. `make check` does the same from the terminal (6 requests).
 
 #### Tear down
 
@@ -217,7 +217,7 @@ tests/             Unit tests (pytest)
 gunicorn.conf.py   gunicorn settings
 pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
-Makefile           test / build / run / scan / push shortcuts
+Makefile           test / build / run / scan / push / check shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
 infra/             OpenTofu main stack, one file per concept: network, firewall,
                    registry, front_door, identity, runner (plus versions, variables,

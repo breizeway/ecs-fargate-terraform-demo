@@ -24,7 +24,7 @@ resource "aws_lb_target_group" "app" {
 
   # ECS ignores the Dockerfile HEALTHCHECK; this check decides who receives traffic. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
   health_check {
-    path                = "/healthz"
+    path                = "/health"
     interval            = 15
     timeout             = 5
     healthy_threshold   = 2
