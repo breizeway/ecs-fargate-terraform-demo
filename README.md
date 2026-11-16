@@ -220,7 +220,8 @@ Dockerfile         Multi-stage image: builder -> test -> runtime
 Makefile           test / build / run / scan / push shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
 infra/             OpenTofu main stack, one file per concept: network, firewall,
-                   registry, front_door, identity, runner (main.tf = plumbing)
+                   registry, front_door, identity, runner (plus versions, variables,
+                   and main.tf for the provider and outputs)
 ```
 
 ## Roadmap
