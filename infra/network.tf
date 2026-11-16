@@ -3,15 +3,11 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  # Private (RFC 1918) range: 65,536 addresses to carve into subnets. https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html
-  vpc_cidr = "10.0.0.0/16"
-
-  # Two zones: a load balancer needs subnets in at least two, and one zone failing leaves the other serving. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
-  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+  azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
 }
 
 resource "aws_vpc" "main" {
-  cidr_block = local.vpc_cidr
+  cidr_block = var.vpc_cidr
 
   tags = { Name = var.project_name }
 }
@@ -22,7 +18,7 @@ resource "aws_subnet" "public" {
 
   vpc_id            = aws_vpc.main.id
   availability_zone = each.key
-  cidr_block        = cidrsubnet(local.vpc_cidr, 8, each.value)
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.value)
 
   tags = { Name = "${var.project_name}-public-${each.key}" }
 }

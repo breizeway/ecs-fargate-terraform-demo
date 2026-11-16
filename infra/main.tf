@@ -32,24 +32,6 @@ provider "aws" {
   }
 }
 
-variable "region" {
-  description = "AWS region to deploy into"
-  type        = string
-  default     = "us-west-2"
-}
-
-variable "project_name" {
-  description = "Name used for resources and tags"
-  type        = string
-  default     = "ecs-fargate-demo"
-}
-
-# No default, so every deploy names the exact image version (CI will pass the commit SHA). https://opentofu.org/docs/language/values/variables/
-variable "image_tag" {
-  description = "Tag of the image in ECR to run"
-  type        = string
-}
-
 output "app_url" {
   description = "Public address of the load balancer"
   value       = "http://${aws_lb.main.dns_name}"

@@ -15,14 +15,12 @@ resource "aws_ecs_task_definition" "app" {
   # awsvpc gives each task its own network interface, so a security group attaches to the task itself. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html
   network_mode = "awsvpc"
 
-  # Smallest Fargate size; only certain CPU and memory pairs are valid. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
-  cpu    = "256"
-  memory = "512"
+  cpu    = var.task_cpu
+  memory = var.task_memory
 
-  # Must match the image's architecture, or the task fails with "exec format error". https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-arm64.html
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = "ARM64"
+    cpu_architecture        = var.cpu_architecture
   }
 
   execution_role_arn = aws_iam_role.task_execution.arn
@@ -60,9 +58,7 @@ resource "aws_ecs_service" "app" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   launch_type     = "FARGATE"
-
-  # Two tasks, one per zone, so losing a task or a zone does not take the service down. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html
-  desired_count = 2
+  desired_count   = var.desired_count
 
   network_configuration {
     subnets         = [for subnet in aws_subnet.public : subnet.id]
