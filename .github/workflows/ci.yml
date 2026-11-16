@@ -1,6 +1,6 @@
 name: CI
 
-# Runs on every pull request and on every merge to main; it uses no AWS credentials.
+# Runs on every pull request and on every merge to main; it needs no AWS credentials. https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
 on:
   pull_request:
   push:
