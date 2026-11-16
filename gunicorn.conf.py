@@ -1,27 +1,20 @@
-"""gunicorn settings.
-
-Every value can be overridden with an environment variable, so the same
-configuration works locally and in a container with a different size.
-"""
+"""gunicorn settings. Environment variables override the defaults."""
 
 import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '8000')}"
 
-# Set explicitly: the common "2 * cpu_count() + 1" formula reads the host's CPU
-# count rather than the container's CPU limit, which over-provisions small tasks.
+# Fixed count: cpu_count() reports the host's CPUs, not the container's limit. https://gunicorn.org/design/
 workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
 threads = int(os.environ.get("GUNICORN_THREADS", "4"))
 
-# Keep worker heartbeat files in memory where possible (Linux). macOS has no
-# /dev/shm, so fall back to gunicorn's default temporary directory there.
+# Heartbeat files need a writable in-memory dir (ECS root filesystem is read-only; macOS has no /dev/shm). https://gunicorn.org/faq/
 worker_tmp_dir = "/dev/shm" if os.path.isdir("/dev/shm") else None
 
-# Finish in-flight requests on SIGTERM, but stay below the platform's stop
-# timeout (ECS default: 30s) so the process exits before it is killed.
+# Finish in-flight requests on SIGTERM and exit before ECS's stop timeout sends SIGKILL. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
 graceful_timeout = 20
 timeout = 30
 
-# Log to stdout/stderr and let the platform collect the output.
+# '-' logs to stdout/stderr instead of files, so the platform can collect the output. https://gunicorn.org/reference/settings/#accesslog
 accesslog = "-"
 errorlog = "-"

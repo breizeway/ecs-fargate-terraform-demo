@@ -1,7 +1,3 @@
-# ECS uses two roles:
-#   execution role - used by ECS itself to pull the image and write logs
-#   task role      - used by the application's own code (it needs no AWS access)
-
 data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy_document" "ecs_tasks_trust" {
@@ -14,7 +10,7 @@ data "aws_iam_policy_document" "ecs_tasks_trust" {
       identifiers = ["ecs-tasks.amazonaws.com"]
     }
 
-    # Confused-deputy protection: only on behalf of this account.
+    # Only ECS acting for this account may use the role (confused-deputy protection). https://docs.aws.amazon.com/IAM/latest/UserGuide/confused-deputy.html
     condition {
       test     = "StringEquals"
       variable = "aws:SourceAccount"
@@ -23,16 +19,13 @@ data "aws_iam_policy_document" "ecs_tasks_trust" {
   }
 }
 
+# ECS's own role (pull the image, write logs). The app has no AWS calls, so it gets no task role. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 resource "aws_iam_role" "task_execution" {
   name               = "${var.project_name}-task-execution"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
 }
 
-# Least privilege: scoped to this repository and this log group, instead of the
-# AWS-managed policy (which allows pulling from every repository).
-# Accepted exception (AWS-0057): ecr:GetAuthorizationToken does not support
-# resource-level permissions, so "*" is required for that one action; it returns
-# only a short-lived login token.
+# Accepted exception: GetAuthorizationToken cannot be limited to a resource, so it needs "*". https://docs.aws.amazon.com/AmazonECR/latest/userguide/security_iam_id-based-policy-examples.html
 #trivy:ignore:AWS-0057
 data "aws_iam_policy_document" "task_execution" {
   statement {
@@ -62,11 +55,4 @@ resource "aws_iam_role_policy" "task_execution" {
   name   = "pull-image-and-write-logs"
   role   = aws_iam_role.task_execution.id
   policy = data.aws_iam_policy_document.task_execution.json
-}
-
-# The application makes no AWS API calls, so this role has no permissions. It
-# exists so any future permission is added here deliberately and reviewed.
-resource "aws_iam_role" "task" {
-  name               = "${var.project_name}-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
 }

@@ -1,4 +1,5 @@
 terraform {
+  # use_lockfile (S3-native state locking) needs 1.10+. https://opentofu.org/docs/language/settings/backends/s3/
   required_version = ">= 1.10"
 
   required_providers {
@@ -8,12 +9,12 @@ terraform {
     }
   }
 
-  # The bucket name is account-specific, so it is not committed. Supply it at
-  # init time:  tofu init -backend-config=backend.hcl  (see backend.hcl.example).
+  # The bucket name is account-specific, so it is supplied at init time (see backend.hcl.example). https://opentofu.org/docs/language/settings/backends/configuration/
   backend "s3" {
-    key          = "ecs-fargate-demo/terraform.tfstate"
-    region       = "us-west-2" # backend blocks cannot use variables
+    key = "ecs-fargate-demo/terraform.tfstate"
+    # Backend blocks cannot use variables, so the region is repeated here. https://opentofu.org/docs/language/settings/backends/configuration/
+    region       = "us-west-2"
     encrypt      = true
-    use_lockfile = true # S3-native state locking (OpenTofu/Terraform >= 1.10)
+    use_lockfile = true
   }
 }

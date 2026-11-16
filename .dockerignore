@@ -1,4 +1,4 @@
-# Keep the build context small and free of anything private.
+# Keeps the build context small and free of secrets, which also speeds up builds. https://docs.docker.com/build/concepts/context/
 .git
 .gitignore
 .github
@@ -9,7 +9,6 @@ __pycache__
 *.pyc
 .pytest_cache
 
-# Not needed inside the image
 infra
 Makefile
 Dockerfile

@@ -14,10 +14,10 @@ dev = [
 ]
 
 [tool.uv]
-# An application, not a library: uv manages dependencies only.
+# An application, not a library, so nothing is built or installed as a package; uv only manages dependencies. https://docs.astral.sh/uv/concepts/projects/config/
 package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Lets `pytest` (not only `python -m pytest`) import the `app` package.
+# Lets a bare `pytest` import the `app` package, not only `python -m pytest`. https://docs.pytest.org/en/stable/reference/reference.html#confval-pythonpath
 pythonpath = ["."]

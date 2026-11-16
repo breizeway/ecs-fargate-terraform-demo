@@ -12,8 +12,8 @@ A Flask app served by gunicorn. It exposes two endpoints:
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /healthz` | Liveness check. Returns `{"status": "ok"}`. |
-| `GET /` | Reports facts about the environment the process runs in: hostname, pid, uid/gid, kernel, CPU architecture, distro, Python version, build version, CPU count and cgroup limits. Handy for seeing what a container actually looks like from the inside. |
+| `GET /health` | Liveness check. Returns `{"status": "ok"}`. (`/healthz` is a temporary alias while the load balancer switches over.) |
+| `GET /` | Reports where the process runs: hostname (which container answered), uid (non-root), CPU architecture, distro, kernel (shared with the host) and build version. |
 
 ## Run it locally
 
@@ -49,8 +49,8 @@ The [Dockerfile](Dockerfile) has three stages: `builder` (dependencies), `test`
   `docker stop` returns in well under a second with exit code 0.
 - **Dependency layer is cached** and only rebuilt when `pyproject.toml` or
   `uv.lock` change.
-- The Dockerfile `HEALTHCHECK` is for local use. Amazon ECS ignores it; health
-  checks there come from the task definition and load balancer.
+- No Dockerfile `HEALTHCHECK`: Amazon ECS ignores it. Health checks come from
+  the load balancer's target group.
 
 ### Vulnerability scan policy
 
@@ -164,9 +164,9 @@ The rest of the main stack runs the container:
   availability zone), ARM64, 0.25 vCPU / 0.5 GB each, registered with the load
   balancer. Rolling deployments never drop below the desired count, and a
   deployment circuit breaker rolls back a version that keeps failing.
-- **Two IAM roles:** an *execution role* (used by ECS to pull this repository's
-  image and write this log group, nothing broader) and a *task role* with no
-  permissions, because the application makes no AWS calls.
+- **One IAM role:** an *execution role* (used by ECS to pull this repository's
+  image and write this log group, nothing broader). The application makes no
+  AWS calls, so it has no task role.
 - **Hardening:** read-only root filesystem, non-root user, security group that
   only admits the load balancer, logs to CloudWatch with 14-day retention.
 
@@ -219,7 +219,9 @@ pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
 Makefile           test / build / run / scan / push shortcuts
 infra/bootstrap/   OpenTofu: S3 bucket for remote state
-infra/             OpenTofu main stack: network, ECR, load balancer, IAM, ECS service
+infra/             OpenTofu main stack, one file per concept: network, firewall,
+                   registry, front_door, identity, runner (plus versions, variables,
+                   and main.tf for the provider and outputs)
 ```
 
 ## Roadmap

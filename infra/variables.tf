@@ -10,19 +10,22 @@ variable "project_name" {
   default     = "ecs-fargate-demo"
 }
 
+# Private (RFC 1918) range: 65,536 addresses to carve into subnets. https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html
 variable "vpc_cidr" {
-  description = "IP range for the VPC (private address space, RFC 1918)"
+  description = "IP range for the VPC"
   type        = string
   default     = "10.0.0.0/16"
 }
 
+# No default, so every deploy names the exact image version (CI will pass the commit SHA). https://opentofu.org/docs/language/values/variables/
 variable "image_tag" {
-  description = "Tag of the image in ECR to run. No default: say exactly which version to deploy (CI passes the commit SHA)."
+  description = "Tag of the image in ECR to run"
   type        = string
 }
 
+# Must match the image's architecture, or the task fails with "exec format error". https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-arm64.html
 variable "cpu_architecture" {
-  description = "CPU architecture of the image: ARM64 (matches Apple silicon, cheaper) or X86_64"
+  description = "CPU architecture of the image: ARM64 (cheaper, matches Apple silicon) or X86_64"
   type        = string
   default     = "ARM64"
 
@@ -32,14 +35,16 @@ variable "cpu_architecture" {
   }
 }
 
+# Two tasks, one per zone, so losing a task or a zone does not take the service down. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html
 variable "desired_count" {
-  description = "Number of copies of the container to run (2 = one per zone)"
+  description = "Number of copies of the container to run"
   type        = number
   default     = 2
 }
 
+# Only certain CPU and memory pairs are valid on Fargate; the defaults are the smallest size. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
 variable "task_cpu" {
-  description = "Fargate CPU units (256 = 0.25 vCPU); only certain CPU/memory pairs are valid"
+  description = "Fargate CPU units (256 = 0.25 vCPU)"
   type        = string
   default     = "256"
 }
@@ -50,8 +55,9 @@ variable "task_memory" {
   default     = "512"
 }
 
+# A load balancer needs subnets in at least two zones, and one zone failing leaves the other serving. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
 variable "az_count" {
-  description = "Number of availability zones to spread across (a load balancer needs at least 2)"
+  description = "Number of availability zones to spread across"
   type        = number
   default     = 2
 

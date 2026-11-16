@@ -1,70 +1,51 @@
-"""Tiny demo service.
+"""Tiny demo service: the platform around it is the point, not the app.
 
-The point of this project is the platform around the app (image build, IaC,
-deployment), not the app itself. The index route reports facts about the
-environment the process is running in, so the container/Linux behaviour
-is visible from a browser or curl.
+GET /health is the load balancer's liveness check. GET / reports where the
+process runs, so a browser refresh shows which container answered:
+
+    hostname  which container answered
+    uid       0 would mean root; anything else is an unprivileged user
+    machine   CPU architecture (aarch64 = ARM)
+    distro    the container's own OS
+    kernel    the host's kernel, which all containers on a host share
+    version   the release (the image tag)
 """
 
 import os
 import platform
 import socket
-from pathlib import Path
 
 from flask import Flask, jsonify
 
-CGROUP_ROOT = Path("/sys/fs/cgroup")
-OS_RELEASE = Path("/etc/os-release")
-
-
-def _read(path: Path) -> str | None:
-    try:
-        return path.read_text().strip()
-    except OSError:
-        return None
-
 
 def distro() -> str | None:
-    """PRETTY_NAME from /etc/os-release, e.g. 'Debian GNU/Linux 13 (trixie)'."""
-    for line in (_read(OS_RELEASE) or "").splitlines():
-        if line.startswith("PRETTY_NAME="):
-            return line.split("=", 1)[1].strip('"')
-    return None
-
-
-def cgroup_limits() -> dict[str, str | None]:
-    """Resource limits enforced by the kernel (cgroup v2).
-
-    These can differ from what os.cpu_count() or /proc/meminfo report, because
-    those show the host, not the container's limits.
-    """
-    return {
-        "memory_max": _read(CGROUP_ROOT / "memory.max"),
-        "cpu_max": _read(CGROUP_ROOT / "cpu.max"),
-    }
+    # Only Linux has os-release (a Mac running outside Docker does not). https://docs.python.org/3/library/platform.html#platform.freedesktop_os_release
+    try:
+        return platform.freedesktop_os_release()["PRETTY_NAME"]
+    except OSError:
+        return None
 
 
 def create_app() -> Flask:
     flask_app = Flask(__name__)
 
+    # Cheap and dependency-free, so a database blip can't mark every container unhealthy. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
+    @flask_app.get("/health")
+    # Temporary alias: the load balancer still checks /healthz until its health check path is changed. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
     @flask_app.get("/healthz")
-    def healthz():
+    def health():
         return jsonify(status="ok")
 
     @flask_app.get("/")
     def index():
+        # Containers share the host's kernel, which is why `kernel` differs from `distro`. https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/
         return jsonify(
             hostname=socket.gethostname(),
-            pid=os.getpid(),
             uid=os.getuid(),
-            gid=os.getgid(),
-            kernel=platform.release(),
             machine=platform.machine(),
             distro=distro(),
-            python=platform.python_version(),
+            kernel=platform.release(),
             version=os.environ.get("SERVICE_VERSION", "dev"),
-            cpu_count=os.cpu_count(),
-            cgroup=cgroup_limits(),
         )
 
     return flask_app
