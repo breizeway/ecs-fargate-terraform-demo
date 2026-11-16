@@ -1,22 +1,3 @@
-# Keeps its own state in a local, gitignored file: the state bucket cannot hold its own state before it exists. https://opentofu.org/docs/language/state/
-
-terraform {
-  required_version = ">= 1.10"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.0"
-    }
-  }
-}
-
-variable "region" {
-  description = "AWS region for the state bucket"
-  type        = string
-  default     = "us-west-2"
-}
-
 provider "aws" {
   region = var.region
 
@@ -102,9 +83,4 @@ resource "aws_s3_bucket_policy" "state" {
 
   # AWS rejects policy changes that race with the public access block, and nothing references it, so the order is stated. https://opentofu.org/docs/language/meta-arguments/depends_on/
   depends_on = [aws_s3_bucket_public_access_block.state]
-}
-
-output "state_bucket_name" {
-  description = "Name of the S3 bucket that stores state for the main stack"
-  value       = aws_s3_bucket.state.id
 }
