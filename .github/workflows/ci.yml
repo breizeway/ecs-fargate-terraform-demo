@@ -1,0 +1,47 @@
+name: CI
+
+# Runs on every pull request and on every merge to main; it needs no AWS credentials. https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# The default token can only read the repository. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the older run pointless. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Tests and image scan
+    # Same CPU architecture as the Fargate tasks, so the image is built the way it will run. https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+    runs-on: ubuntu-24.04-arm
+    steps:
+      # Actions are pinned to a full commit SHA, the only immutable reference. https://docs.github.com/en/actions/reference/security/secure-use
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+      - run: make test
+      - run: make scan
+
+  infra:
+    name: OpenTofu checks
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: opentofu/setup-opentofu@9d84900f3238fab8cd84ce47d658d25dd008be2f # v1.0.8
+        with:
+          tofu_version: 1.13.9
+      - uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+      - run: tofu fmt -check -recursive
+      # -backend=false checks the code without needing the state bucket or AWS credentials. https://opentofu.org/docs/cli/commands/init/
+      - name: Validate the main stack
+        working-directory: infra
+        run: tofu init -backend=false -input=false && tofu validate
+      - name: Validate the bootstrap stack
+        working-directory: infra/bootstrap
+        run: tofu init -backend=false -input=false && tofu validate
+      - run: trivy config --severity HIGH,CRITICAL --exit-code 1 infra
