@@ -1,12 +1,7 @@
-# Bootstrap stack: creates the S3 bucket that stores OpenTofu state for ../
-#
-# This stack keeps its own state in a local file (there is no `backend` block):
-# the bucket cannot store its own state before it exists. The local state file
-# is gitignored. If it is lost the bucket still exists and can be re-attached
-# with `tofu import`.
+# Creates the S3 bucket that stores OpenTofu state for ../ (this stack keeps its own state in a local, gitignored file).
 
 terraform {
-  required_version = ">= 1.10" # S3-native state locking (used by ../) needs 1.10+
+  required_version = ">= 1.10"
 
   required_providers {
     aws = {
@@ -35,18 +30,16 @@ provider "aws" {
 }
 
 resource "aws_s3_bucket" "state" {
-  # AWS appends a random suffix, so the name is unique and contains no account
-  # ID. The main stack receives the name at init time (see ../backend.hcl.example).
+  # AWS adds a random suffix, so the name is unique and holds no account ID. https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket
   bucket_prefix = "tfstate-"
 
   lifecycle {
-    # Losing the state bucket means losing the record of everything it manages.
-    # Remove this line deliberately when tearing the project down.
+    # Losing this bucket means losing the record of everything the main stack manages. https://opentofu.org/docs/language/meta-arguments/lifecycle/
     prevent_destroy = true
   }
 }
 
-# Keep previous versions of the state file so a bad apply can be rolled back.
+# Keeps old versions of the state file, so a bad apply can be rolled back. https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html
 resource "aws_s3_bucket_versioning" "state" {
   bucket = aws_s3_bucket.state.id
 
@@ -55,9 +48,7 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
-# Accepted risk: S3-managed keys (AES256) instead of a customer-managed KMS key.
-# The data is encrypted at rest; a KMS key would add key-level access control
-# and audit logging, which a production or regulated setup should use.
+# Accepted exception: AWS-managed keys instead of a KMS key, which would add key-level access control and audit logs. https://docs.aws.amazon.com/AmazonS3/latest/userguide/serv-side-encryption.html
 #trivy:ignore:AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
@@ -70,6 +61,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   }
 }
 
+# State can contain secrets, so the bucket must never be public. https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
 resource "aws_s3_bucket_public_access_block" "state" {
   bucket = aws_s3_bucket.state.id
 
@@ -79,7 +71,6 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-# Refuse any request that is not made over TLS.
 data "aws_iam_policy_document" "tls_only" {
   statement {
     sid     = "DenyInsecureTransport"
@@ -104,12 +95,12 @@ data "aws_iam_policy_document" "tls_only" {
   }
 }
 
+# Refuse any request that is not made over TLS. https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html
 resource "aws_s3_bucket_policy" "state" {
   bucket = aws_s3_bucket.state.id
   policy = data.aws_iam_policy_document.tls_only.json
 
-  # AWS rejects bucket-policy changes that race with the public access block;
-  # there is no attribute reference between them, so the order is explicit.
+  # AWS rejects policy changes that race with the public access block, and nothing references it, so the order is stated. https://opentofu.org/docs/language/meta-arguments/depends_on/
   depends_on = [aws_s3_bucket_public_access_block.state]
 }
 

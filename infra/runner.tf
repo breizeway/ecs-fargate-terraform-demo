@@ -1,10 +1,4 @@
-# ECS vocabulary:
-#   cluster          - logical grouping (with Fargate there are no servers to manage)
-#   task definition  - the recipe for one copy: image, CPU/memory, ports, logs, roles
-#   service          - keeps N tasks running, registers them with the load balancer,
-#                      and rolls out new task-definition revisions
-
-# Without a retention setting, logs are kept (and billed) forever.
+# Without a retention setting, logs are kept (and billed) forever. https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${var.project_name}"
   retention_in_days = 14
@@ -18,45 +12,38 @@ resource "aws_ecs_task_definition" "app" {
   family                   = var.project_name
   requires_compatibilities = ["FARGATE"]
 
-  # awsvpc gives each task its own network interface and IP, so the security
-  # group attaches to the task and the target group can use IP targets.
+  # awsvpc gives each task its own network interface, so a security group attaches to the task itself. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html
   network_mode = "awsvpc"
 
-  cpu    = var.task_cpu
-  memory = var.task_memory
+  # Smallest Fargate size; only certain CPU and memory pairs are valid. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
+  cpu    = "256"
+  memory = "512"
 
-  # Must match the architecture the image was built for, or the task fails at
-  # start-up with "exec format error".
+  # Must match the image's architecture, or the task fails with "exec format error". https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-arm64.html
   runtime_platform {
     operating_system_family = "LINUX"
-    cpu_architecture        = var.cpu_architecture
+    cpu_architecture        = "ARM64"
   }
 
   execution_role_arn = aws_iam_role.task_execution.arn
-  task_role_arn      = aws_iam_role.task.arn
 
   container_definitions = jsonencode([{
-    name      = "app"
-    image     = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
-    essential = true
+    name  = "app"
+    image = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
 
-    portMappings = [{
-      containerPort = 8000
-      protocol      = "tcp"
-    }]
+    portMappings = [{ containerPort = 8000 }]
 
-    # The application writes nothing to disk (gunicorn's heartbeat files use
-    # /dev/shm, which stays writable).
+    # The app writes nothing to disk, so make the filesystem read-only. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
     readonlyRootFilesystem = true
 
-    # Seconds between SIGTERM and SIGKILL; longer than gunicorn's graceful_timeout.
+    # Seconds between SIGTERM and SIGKILL; longer than gunicorn's 20 s graceful_timeout. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
     stopTimeout = 30
 
     environment = [
       { name = "SERVICE_VERSION", value = var.image_tag },
     ]
 
-    # The application logs to stdout/stderr; the execution role allows the write.
+    # The app logs to stdout; this driver ships it to CloudWatch. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -72,41 +59,38 @@ resource "aws_ecs_service" "app" {
   name            = var.project_name
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = var.desired_count
   launch_type     = "FARGATE"
+
+  # Two tasks, one per zone, so losing a task or a zone does not take the service down. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs_services.html
+  desired_count = 2
 
   network_configuration {
     subnets         = [for subnet in aws_subnet.public : subnet.id]
     security_groups = [aws_security_group.app.id]
 
-    # Accepted trade-off: tasks get a public IP only so they can reach ECR and
-    # CloudWatch without a NAT gateway. The security group still allows inbound
-    # traffic only from the load balancer.
+    # Public IP only so tasks can reach ECR and CloudWatch without a NAT gateway. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html
     assign_public_ip = true
   }
 
-  # ECS registers each task's IP with the target group and removes it when the
-  # task stops; the load balancer health-checks it before sending traffic.
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
     container_name   = "app"
     container_port   = 8000
   }
 
-  # Rolling deployments without dropping below the desired capacity.
+  # Rolling deploy: never drop below the desired count, start up to double while swapping. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
-  # Stop retrying a deployment that keeps failing and roll back to the last good one.
+  # A version that keeps failing to start is rolled back automatically. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-circuit-breaker.html
   deployment_circuit_breaker {
     enable   = true
     rollback = true
   }
 
-  # Failed health checks during start-up are ignored for this long.
+  # Ignore failed health checks while the app boots, or ECS kills tasks that are still starting. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/service_definition_parameters.html
   health_check_grace_period_seconds = 30
 
-  # The listener must exist before the service registers with the target group;
-  # nothing references it directly, so the dependency is explicit.
+  # Nothing references the listener, so the order is stated: it must exist before the service registers. https://opentofu.org/docs/language/meta-arguments/depends_on/
   depends_on = [aws_lb_listener.http]
 }

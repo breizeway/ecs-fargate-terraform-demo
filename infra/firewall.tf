@@ -1,13 +1,10 @@
-# Declaring the default security group with no rules removes its default
-# allow-all-between-members behaviour.
+# An empty default security group removes its allow-all-between-members behaviour. https://docs.aws.amazon.com/vpc/latest/userguide/default-security-group.html
 resource "aws_default_security_group" "default" {
   vpc_id = aws_vpc.main.id
   tags   = { Name = "${var.project_name}-default-locked" }
 }
 
-# Security groups. Rules reference other security groups instead of IP ranges
-# where possible, so the app only accepts traffic from the load balancer.
-
+# name_prefix + create_before_destroy lets a replacement group exist alongside the old one. https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/security_group
 resource "aws_security_group" "alb" {
   name_prefix = "${var.project_name}-alb-"
   description = "Public load balancer: HTTP in from the internet, traffic out to the app only"
@@ -32,9 +29,7 @@ resource "aws_security_group" "app" {
   }
 }
 
-# Accepted exception (AWS-0107): a public web load balancer must accept traffic
-# from the internet. Plain HTTP only for now; HTTPS needs a certificate and a
-# domain name.
+# Accepted exception: a public website must accept the internet; HTTPS arrives with the custom domain. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
 #trivy:ignore:AWS-0107
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
@@ -54,6 +49,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_app" {
   to_port                      = 8000
 }
 
+# Referencing the load balancer's group (not an IP range) means only the load balancer can reach the app. https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html
 resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   security_group_id            = aws_security_group.app.id
   description                  = "From the load balancer on 8000"
@@ -63,10 +59,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   to_port                      = 8000
 }
 
-# Accepted exception (AWS-0104): there is no NAT gateway (~$30+/month), so tasks
-# in public subnets reach ECR and CloudWatch over the internet gateway. Egress is
-# limited to HTTPS. A production setup would use private subnets with VPC
-# endpoints or a NAT gateway so tasks have no public IP at all.
+# Accepted exception: no NAT gateway (about $30/month), so tasks reach ECR and CloudWatch over the internet gateway on 443 only. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-networking.html
 #trivy:ignore:AWS-0104
 resource "aws_vpc_security_group_egress_rule" "app_https_out" {
   security_group_id = aws_security_group.app.id

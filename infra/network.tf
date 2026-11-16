@@ -3,39 +3,37 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
+  # Private (RFC 1918) range: 65,536 addresses to carve into subnets. https://docs.aws.amazon.com/vpc/latest/userguide/vpc-cidr-blocks.html
+  vpc_cidr = "10.0.0.0/16"
+
+  # Two zones: a load balancer needs subnets in at least two, and one zone failing leaves the other serving. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
+  azs = slice(data.aws_availability_zones.available.names, 0, 2)
 }
 
 resource "aws_vpc" "main" {
-  cidr_block = var.vpc_cidr
-
-  enable_dns_support   = true
-  enable_dns_hostnames = true
+  cidr_block = local.vpc_cidr
 
   tags = { Name = var.project_name }
 }
 
-# One public subnet per availability zone, carved out of the VPC range:
-# cidrsubnet("10.0.0.0/16", 8, n) -> 10.0.n.0/24.
+# cidrsubnet() gives each zone its own non-overlapping /24 (10.0.0.0/24, 10.0.1.0/24). https://opentofu.org/docs/language/functions/cidrsubnet/
 resource "aws_subnet" "public" {
   for_each = { for index, az in local.azs : az => index }
 
   vpc_id            = aws_vpc.main.id
   availability_zone = each.key
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.value)
-
-  # "Public" means routable to the internet (route table below). Public IPs are
-  # assigned per resource (the ECS service) rather than to everything launched.
-  map_public_ip_on_launch = false
+  cidr_block        = cidrsubnet(local.vpc_cidr, 8, each.value)
 
   tags = { Name = "${var.project_name}-public-${each.key}" }
 }
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = var.project_name }
+
+  tags = { Name = var.project_name }
 }
 
+# A subnet is "public" only because its route table sends internet traffic to the gateway. https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
