@@ -71,5 +71,5 @@ variable "az_count" {
 variable "domain_name" {
   description = "Subdomain that serves the site over HTTPS"
   type        = string
-  default     = "demo.tannor.net"
+  default     = "ecs-fargate-terraform-demo.tannor.net"
 }

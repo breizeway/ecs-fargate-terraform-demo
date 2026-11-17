@@ -191,7 +191,7 @@ between the two tasks. `make check` does the same from the terminal (6 requests)
 
 #### Custom domain and HTTPS
 
-The site is served at `https://<domain_name>` (default `demo.tannor.net`, set in
+The site is served at `https://<domain_name>` (default `ecs-fargate-terraform-demo.tannor.net`, set in
 `variables.tf`); plain HTTP redirects to it. The parent domain's DNS is hosted
 outside AWS, so only the subdomain is delegated to Route 53, once per zone:
 
