@@ -31,5 +31,5 @@ push: build ## Push the image to ECR. Needs a login: AWS_PROFILE=<profile> make 
 check: ## Ask the live site for its version 6 times (needs AWS_PROFILE and a deployed stack)
 	@URL=$$(cd infra && tofu output -raw app_url) && \
 	for i in 1 2 3 4 5 6; do \
-	  curl -s -m 5 "$$URL/" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d["hostname"])' || echo FAIL; \
+	  curl -s -m 5 "$$URL/" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"], d["system"]["node"])' || echo FAIL; \
 	done

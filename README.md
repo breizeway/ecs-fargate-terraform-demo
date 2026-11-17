@@ -13,7 +13,7 @@ A Flask app served by gunicorn. It exposes two endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness check. Returns `{"status": "ok"}`. |
-| `GET /` | Reports where the process runs: hostname (which container answered), uid (non-root), CPU architecture, distro, kernel (shared with the host) and build version. |
+| `GET /` | Reports where the process runs: the release (`version`), `identity` (uid, pid, parent pid), the container's whole `os` release file, `system` (uname: `node` is which container answered, `release` the host's kernel) and the Python version. Environment variables are deliberately not shown. |
 
 ## Run it locally
 
@@ -185,7 +185,7 @@ tofu output app_url                                     # open this in a browser
 (`-target` is used here only to break the registry/image ordering. Later
 deployments are a single `make push` followed by `tofu apply -var image_tag=<tag>`.)
 
-Refreshing the page shows a different `hostname` as the load balancer alternates
+Refreshing the page shows a different `system.node` as the load balancer alternates
 between the two tasks. `make check` does the same from the terminal (6 requests).
 
 #### Custom domain and HTTPS
