@@ -9,8 +9,6 @@ process runs, so a browser refresh shows which container answered:
     system    uname: `node` is which container answered, `release` the host's kernel
               (shared by all containers on a host), `machine` the CPU (aarch64 = ARM)
     python    the interpreter version
-
-Environment variables are left out on purpose: they can hold secrets.
 """
 
 import os

@@ -13,7 +13,7 @@ A Flask app served by gunicorn. It exposes two endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness check. Returns `{"status": "ok"}`. |
-| `GET /` | Reports where the process runs: the release (`version`), `identity` (uid, pid, parent pid), the container's whole `os` release file, `system` (uname: `node` is which container answered, `release` the host's kernel) and the Python version. Environment variables are deliberately not shown. |
+| `GET /` | Reports where the process runs: the release (`version`), `identity` (uid, pid, parent pid), the container's whole `os` release file, `system` (uname: `node` is which container answered, `release` the host's kernel) and the Python version. |
 
 ## Run it locally
 
