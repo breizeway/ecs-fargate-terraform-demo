@@ -192,20 +192,24 @@ between the two tasks. `make check` does the same from the terminal (6 requests)
 
 The site is served at `https://<domain_name>` (default
 `ecs-fargate-terraform-demo.tannor.net`, set in `variables.tf`); plain HTTP
-redirects to it. The parent domain's DNS is hosted outside AWS, so only the
-subdomain is delegated to Route 53, once per zone:
+redirects to it. The parent domain's DNS is hosted outside AWS (its provider has
+no `NS` record type), so two `CNAME` records are added there by hand:
 
-1. `tofu apply` creates the hosted zone and an ACM certificate, then waits for
-   the certificate to validate (the AWS provider allows up to 75 minutes).
-2. While it waits, list the zone's name servers
-   (`aws route53 list-hosted-zones-by-name --dns-name <domain_name>`, then
-   `aws route53 get-hosted-zone --id <zone id>`) and add them as `NS` records
-   for the subdomain at the parent domain's DNS provider.
-3. Validation completes, the HTTPS listener is created, and the apply finishes.
-   `tofu output name_servers` shows the same list afterwards.
+1. `tofu apply` requests an ACM certificate, then waits for it to validate (the
+   AWS provider allows up to 75 minutes).
+2. While it waits, read the validation record and add it as a `CNAME`:
+   ```bash
+   CERT=$(aws acm list-certificates --region us-west-2 \
+     --certificate-statuses PENDING_VALIDATION ISSUED \
+     --query "CertificateSummaryList[?DomainName=='<domain_name>'].CertificateArn" --output text)
+   aws acm describe-certificate --region us-west-2 --certificate-arn "$CERT" \
+     --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+   ```
+3. When the apply finishes, add a second `CNAME` from the site's name to
+   `tofu output -raw load_balancer_dns_name`.
 
-A destroyed and re-created zone gets **new** name servers, so update or remove
-those `NS` records whenever the stack is rebuilt or torn down.
+Keep the validation record: ACM uses it to renew the certificate. Remove both
+records when the stack is torn down.
 
 #### Tear down
 
@@ -214,9 +218,9 @@ cd infra && tofu destroy -var image_tag=v1
 ```
 
 This removes every resource in the main stack, including the ECR repository and
-its images, and the Route 53 zone. The state bucket (bootstrap stack) is left in
-place, and the `NS` records at the parent domain's DNS provider must be removed
-by hand.
+its images and the certificate. The state bucket (bootstrap stack) is left in
+place, and the two `CNAME` records at the parent domain's DNS provider must be
+removed by hand.
 
 #### Cost
 
@@ -224,8 +228,8 @@ Billed by the hour while deployed: roughly **$0.06–0.07/hour (about $1.50–1.
 day)** in us-west-2, based on list prices (Nov 2026): load balancer $0.0225/h plus
 usage, $0.005/h for each public IPv4 address (the load balancer uses two, the
 tasks one each), and Fargate ARM at $0.03238 per vCPU-hour and $0.00356 per
-GB-hour, plus a Route 53 hosted zone (about $0.50/month, billed per zone).
-Verify against current AWS pricing, and tear the stack down when not in use.
+GB-hour. The ACM certificate is free. Verify against current AWS pricing, and
+tear the stack down when not in use.
 
 ## Project layout
 
@@ -248,7 +252,7 @@ infra/             OpenTofu main stack (one file per AWS service area, see below
 | `security_groups.tf` | Firewall rules: who may connect to what |
 | `ecr.tf` | Image repository and its lifecycle policy |
 | `load_balancer.tf` | Public entry point: load balancer, HTTP redirect and HTTPS listeners, target group with the health check |
-| `dns.tf` | Route 53 zone for the subdomain, the HTTPS certificate and its validation, the record that points at the load balancer |
+| `certificate.tf` | The HTTPS certificate and the wait for its validation |
 | `iam.tf` | The role ECS uses to pull the image and write logs |
 | `ecs.tf` | Log group, cluster, task definition and service (keeps two copies running) |
 | `versions.tf`, `variables.tf`, `outputs.tf`, `main.tf` | Tool and provider versions with the state backend, inputs, outputs, and the provider |
@@ -261,5 +265,5 @@ infra/             OpenTofu main stack (one file per AWS service area, see below
 - [x] Network and image registry (VPC, subnets, security groups, ECR)
 - [x] Load balancer and ECS Fargate service
 - [x] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
-- [x] HTTPS on a custom subdomain (ACM certificate, Route 53)
+- [x] HTTPS on a custom subdomain (ACM certificate, DNS validation)
 - [ ] Architecture diagram, cost notes and design trade-offs

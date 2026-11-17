@@ -67,7 +67,7 @@ variable "az_count" {
   }
 }
 
-# The subdomain is delegated to Route 53 at the parent domain's DNS provider, which is outside AWS. https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingNewSubdomain.html
+# The name's DNS records live at the parent domain's provider, outside AWS, so they are added by hand. https://docs.aws.amazon.com/acm/latest/userguide/dns-validation.html
 variable "domain_name" {
   description = "Subdomain that serves the site over HTTPS"
   type        = string

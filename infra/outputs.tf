@@ -8,7 +8,7 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.app.repository_url
 }
 
-output "name_servers" {
-  description = "Add these as NS records for the subdomain at the parent domain's DNS provider"
-  value       = aws_route53_zone.app.name_servers
+output "load_balancer_dns_name" {
+  description = "Target of the CNAME record that points the site's name at the load balancer"
+  value       = aws_lb.main.dns_name
 }
