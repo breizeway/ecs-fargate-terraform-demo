@@ -18,8 +18,22 @@ def test_health_ok(client):
 
 def test_index_reports_runtime_facts(client):
     data = client.get("/").get_json()
-    assert {"hostname", "uid", "machine", "distro", "kernel", "version"} == data.keys()
-    assert isinstance(data["uid"], int)
+    assert {"version", "identity", "os", "system", "python"} == data.keys()
+    assert isinstance(data["identity"]["uid"], int)
+    assert {"node", "release", "machine"} <= data["system"].keys()
+
+
+def test_index_survives_a_missing_os_release(client, monkeypatch):
+    def missing():
+        raise OSError
+
+    monkeypatch.setattr(main.platform, "freedesktop_os_release", missing)
+    assert client.get("/").get_json()["os"] == {}
+
+
+def test_index_does_not_expose_the_environment(client, monkeypatch):
+    monkeypatch.setenv("DB_PASSWORD", "hunter2")
+    assert "hunter2" not in client.get("/").get_data(as_text=True)
 
 
 def test_unknown_route_is_404(client):

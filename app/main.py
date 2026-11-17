@@ -3,27 +3,26 @@
 GET /health is the load balancer's liveness check. GET / reports where the
 process runs, so a browser refresh shows which container answered:
 
-    hostname  which container answered
-    uid       0 would mean root; anything else is an unprivileged user
-    machine   CPU architecture (aarch64 = ARM)
-    distro    the container's own OS
-    kernel    the host's kernel, which all containers on a host share
     version   the release (the image tag)
+    identity  uid 0 would mean root; ppid 1 means gunicorn is the container's PID 1
+    os        the container's own OS (its whole os-release file)
+    system    uname: `node` is which container answered, `release` the host's kernel
+              (shared by all containers on a host), `machine` the CPU (aarch64 = ARM)
+    python    the interpreter version
 """
 
 import os
 import platform
-import socket
 
 from flask import Flask, jsonify
 
 
-def distro() -> str | None:
+def os_release() -> dict[str, str]:
     # Only Linux has an os-release file. https://docs.python.org/3/library/platform.html#platform.freedesktop_os_release
     try:
-        return platform.freedesktop_os_release()["PRETTY_NAME"]
+        return platform.freedesktop_os_release()
     except OSError:
-        return None
+        return {}
 
 
 def create_app() -> Flask:
@@ -35,14 +34,13 @@ def create_app() -> Flask:
 
     @flask_app.get("/")
     def index():
-        # Containers share the host's kernel, which is why `kernel` differs from `distro`. https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/
+        # Containers share the host's kernel, which is why `system.release` differs from `os`. https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/
         return jsonify(
-            hostname=socket.gethostname(),
-            uid=os.getuid(),
-            machine=platform.machine(),
-            distro=distro(),
-            kernel=platform.release(),
             version=os.environ.get("SERVICE_VERSION", "dev"),
+            identity=dict(uid=os.getuid(), gid=os.getgid(), pid=os.getpid(), ppid=os.getppid()),
+            os=os_release(),
+            system=platform.uname()._asdict(),
+            python=platform.python_version(),
         )
 
     return flask_app
