@@ -9,10 +9,10 @@ terraform {
     }
   }
 
-  # The bucket name is account-specific, so it is supplied at init time (see backend.hcl.example). https://opentofu.org/docs/language/settings/backends/configuration/
+  # Left out on purpose (a partial configuration): the bucket name is account-specific, so `tofu init` reads it from backend.hcl. https://opentofu.org/docs/language/settings/backends/configuration/
   backend "s3" {
     key = "ecs-fargate-demo/terraform.tfstate"
-    # Backend blocks cannot use variables, so the region is repeated here. https://opentofu.org/docs/language/settings/backends/configuration/
+    # Written out because Terraform rejects variables in backend blocks, and this code stays compatible with it. https://developer.hashicorp.com/terraform/language/backend
     region       = "us-west-2"
     encrypt      = true
     use_lockfile = true

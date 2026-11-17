@@ -34,9 +34,6 @@ resource "aws_ecs_task_definition" "app" {
     # The app writes nothing to disk, so make the filesystem read-only. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
     readonlyRootFilesystem = true
 
-    # Seconds between SIGTERM and SIGKILL; longer than gunicorn's 20 s graceful_timeout. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
-    stopTimeout = 30
-
     environment = [
       { name = "SERVICE_VERSION", value = var.image_tag },
     ]

@@ -19,7 +19,7 @@ from flask import Flask, jsonify
 
 
 def distro() -> str | None:
-    # Only Linux has os-release (a Mac running outside Docker does not). https://docs.python.org/3/library/platform.html#platform.freedesktop_os_release
+    # Only Linux has an os-release file. https://docs.python.org/3/library/platform.html#platform.freedesktop_os_release
     try:
         return platform.freedesktop_os_release()["PRETTY_NAME"]
     except OSError:
@@ -29,7 +29,6 @@ def distro() -> str | None:
 def create_app() -> Flask:
     flask_app = Flask(__name__)
 
-    # Cheap and dependency-free, so a database blip can't mark every container unhealthy. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
     @flask_app.get("/health")
     def health():
         return jsonify(status="ok")

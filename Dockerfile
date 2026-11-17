@@ -3,7 +3,7 @@
 # One place to bump the Python version, used by both stages. https://docs.docker.com/reference/dockerfile/
 ARG PYTHON_VERSION=3.14
 
-# Debian slim, not Alpine: Alpine uses musl instead of glibc, so software often hits compatibility issues. https://github.com/docker-library/docs/blob/master/python/README.md
+# The slim variant carries only the Debian packages Python needs. https://github.com/docker-library/docs/blob/master/python/README.md
 FROM python:${PYTHON_VERSION}-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv

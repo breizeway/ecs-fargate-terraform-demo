@@ -1,4 +1,4 @@
-# Accepted exception: this is the internet-facing entry point by design; the app behind it only accepts this load balancer. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
+# Trivy flags every internet-facing load balancer; this one is the site's only public entry point, and the app accepts traffic only from it. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/application-load-balancers.html
 #trivy:ignore:AWS-0053
 resource "aws_lb" "main" {
   name               = var.project_name
@@ -31,7 +31,7 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 3
   }
 
-  # The default (300 s) makes every deploy slow; 30 s matches the app's stop timeout. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html
+  # The default (300 s) makes every deploy slow; 30 s matches ECS's default stop timeout. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/edit-target-group-attributes.html
   deregistration_delay = 30
 
   tags = { Name = var.project_name }
