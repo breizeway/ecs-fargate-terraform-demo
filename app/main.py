@@ -29,7 +29,6 @@ def distro() -> str | None:
 def create_app() -> Flask:
     flask_app = Flask(__name__)
 
-    # Liveness only: 200 means the process is up, with no dependency checks. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/target-group-health-checks.html
     @flask_app.get("/health")
     def health():
         return jsonify(status="ok")
