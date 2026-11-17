@@ -3,8 +3,8 @@
 A small Python web service used to practise building a container image and
 deploying it to AWS ECS Fargate with OpenTofu (Terraform-compatible).
 
-> **Status: work in progress.** The service itself lands first; the container
-> image, infrastructure code and CI follow. See the [roadmap](#roadmap).
+> **Status:** working end to end (image, infrastructure, CI/CD, HTTPS). An
+> architecture diagram is the main thing left; see the [roadmap](#roadmap).
 
 ## The service
 
@@ -82,9 +82,8 @@ and (for `trivy config`) Trivy.
 
 ### State bootstrap
 
-OpenTofu records what it manages in a *state file*. The main stack (added in a
-later change) stores its state remotely in S3 so it is shared, versioned and
-locked. `infra/bootstrap` creates that bucket once:
+OpenTofu records what it manages in a *state file*. The main stack stores its
+state remotely in S3 so it is shared, versioned and locked. `infra/bootstrap` creates that bucket once:
 
 ```bash
 cd infra/bootstrap
@@ -128,10 +127,10 @@ It creates:
 
 - **A VPC** with two public subnets in different availability zones, an internet
   gateway and a route table.
-- **Security groups:** the load balancer accepts HTTP (which only redirects) and HTTPS from the
-  internet and may only talk to the app; the app accepts traffic *only from the load balancer's
-  security group* and may only make outbound HTTPS requests. The VPC's default
-  security group is emptied.
+- **Security groups:** the load balancer accepts HTTP (which only redirects) and
+  HTTPS from the internet and may only talk to the app; the app accepts traffic
+  *only from the load balancer's security group* and may only make outbound
+  HTTPS requests. The VPC's default security group is emptied.
 - **An ECR repository** with immutable tags (a pushed tag can never be
   overwritten), scan-on-push and a lifecycle policy that keeps the last 10 images.
 
@@ -191,9 +190,10 @@ between the two tasks. `make check` does the same from the terminal (6 requests)
 
 #### Custom domain and HTTPS
 
-The site is served at `https://<domain_name>` (default `ecs-fargate-terraform-demo.tannor.net`, set in
-`variables.tf`); plain HTTP redirects to it. The parent domain's DNS is hosted
-outside AWS, so only the subdomain is delegated to Route 53, once per zone:
+The site is served at `https://<domain_name>` (default
+`ecs-fargate-terraform-demo.tannor.net`, set in `variables.tf`); plain HTTP
+redirects to it. The parent domain's DNS is hosted outside AWS, so only the
+subdomain is delegated to Route 53, once per zone:
 
 1. `tofu apply` creates the hosted zone and an ACM certificate, then waits for
    the certificate to validate (the AWS provider allows up to 75 minutes).
@@ -215,7 +215,8 @@ cd infra && tofu destroy -var image_tag=v1
 
 This removes every resource in the main stack, including the ECR repository and
 its images, and the Route 53 zone. The state bucket (bootstrap stack) is left in
-place, and the `NS` records at the parent domain's DNS provider must be removed by hand.
+place, and the `NS` records at the parent domain's DNS provider must be removed
+by hand.
 
 #### Cost
 
@@ -223,8 +224,8 @@ Billed by the hour while deployed: roughly **$0.06–0.07/hour (about $1.50–1.
 day)** in us-west-2, based on list prices (Nov 2026): load balancer $0.0225/h plus
 usage, $0.005/h for each public IPv4 address (the load balancer uses two, the
 tasks one each), and Fargate ARM at $0.03238 per vCPU-hour and $0.00356 per
-GB-hour, plus a Route 53 hosted zone (about $0.50/month, billed per zone). Verify against current AWS pricing, and tear the stack down when not in
-use.
+GB-hour, plus a Route 53 hosted zone (about $0.50/month, billed per zone).
+Verify against current AWS pricing, and tear the stack down when not in use.
 
 ## Project layout
 
