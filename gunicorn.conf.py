@@ -13,7 +13,6 @@ worker_tmp_dir = "/dev/shm" if os.path.isdir("/dev/shm") else None
 
 # Finish in-flight requests on SIGTERM and exit before ECS's default 30 s stop timeout sends SIGKILL. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
 graceful_timeout = 20
-timeout = 30
 
 # '-' logs to stdout/stderr instead of files, so the platform can collect the output. https://gunicorn.org/reference/settings/#accesslog
 accesslog = "-"

@@ -13,7 +13,7 @@ A Flask app served by gunicorn. It exposes two endpoints:
 | Endpoint | Purpose |
 |---|---|
 | `GET /health` | Liveness check. Returns `{"status": "ok"}`. |
-| `GET /` | Reports where the process runs: the release (`version`), `identity` (uid, pid, parent pid), the container's whole `os` release file, `system` (uname: `node` is which container answered, `release` the host's kernel) and the Python version. |
+| `GET /` | Reports where the service is running, as JSON: the release (`version`), the user and process ids, the container's operating system (`os`), the machine details (`system`) and the Python version. `system.node` is the name of the container that answered, so it changes between requests when two are running. |
 
 ## Run it locally
 
@@ -40,13 +40,14 @@ make scan    # vulnerability scan
 The [Dockerfile](Dockerfile) has three stages: `builder` (dependencies), `test`
 (runs pytest) and `runtime` (the image that ships). Design choices:
 
-- **`python:3.14-slim` (Debian), not Alpine** — most Python binary wheels target
-  glibc; musl often forces source builds.
+- **`python:3.14-slim` (Debian)**: the `-slim` variant carries only the Debian
+  packages Python needs, which keeps the image small.
 - **Dependencies from `uv.lock`**, installed with `--locked` so a stale lockfile
   fails the build. uv and pip are not present in the final image.
 - **Runs as a non-root user** (uid/gid 10001).
-- **Exec-form `CMD`** so gunicorn is PID 1 and receives SIGTERM directly;
-  `docker stop` returns in well under a second with exit code 0.
+- **Exec-form `CMD`** (`CMD ["gunicorn", ...]`, not a shell string) so gunicorn is
+  the container's first process and receives the stop signal directly. In a test,
+  `docker stop` finished in well under a second with exit code 0.
 - **Dependency layer is cached** and only rebuilt when `pyproject.toml` or
   `uv.lock` change.
 - No Dockerfile `HEALTHCHECK`: Amazon ECS ignores it. Health checks come from
@@ -54,11 +55,13 @@ The [Dockerfile](Dockerfile) has three stages: `builder` (dependencies), `test`
 
 ### Vulnerability scan policy
 
-`make scan` fails the build on **fixable** HIGH/CRITICAL findings. The Debian
-base image still carries HIGH findings for which no patch exists yet; those are
-deliberately not blocking, and are reviewed by rebuilding on a schedule rather
-than by suppressing them. Run `trivy image --severity HIGH,CRITICAL
-ecs-fargate-demo:dev` to see the full list.
+`make scan` fails the build on **fixable** HIGH/CRITICAL findings, meaning ones
+where a patched package already exists. The Debian base image can also carry
+HIGH findings that have no patch yet. Those do not fail the build, because
+rebuilding cannot remove them; they disappear once Debian ships a fix and the
+image is rebuilt. Nothing is suppressed, and nothing re-scans on a timer, so
+re-run the scan after each base image update. To see every finding, patched or
+not, run `trivy image --severity HIGH,CRITICAL ecs-fargate-demo:dev`.
 
 ### Configuration
 
@@ -185,8 +188,10 @@ tofu output app_url                                     # open this in a browser
 (`-target` is used here only to break the registry/image ordering. Later
 deployments are a single `make push` followed by `tofu apply -var image_tag=<tag>`.)
 
-Refreshing the page shows a different `system.node` as the load balancer alternates
-between the two tasks. `make check` does the same from the terminal (6 requests).
+While the stack is deployed, `curl https://<domain_name>/` returns the `GET /`
+JSON. Refreshing the page shows a different `system.node` as the load balancer
+alternates between the two tasks. `make check` does the same from the terminal
+(6 requests).
 
 #### Custom domain and HTTPS
 

@@ -51,7 +51,6 @@ jobs:
           echo "bucket = \"$TF_STATE_BUCKET\"" > infra/backend.hcl
           tofu -chdir=infra init -input=false -backend-config=backend.hcl
 
-      # Action logs are public, so the load balancer address is masked before anything prints it. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
       - run: make test
       - run: make scan
 
