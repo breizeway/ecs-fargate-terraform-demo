@@ -4,9 +4,9 @@ variable "region" {
   default     = "us-west-2"
 }
 
-# Public already (it is in the remote URL); the trust policy pins deploys to this repository. https://docs.github.com/en/actions/reference/security/oidc
-variable "github_repository" {
-  description = "GitHub repository (owner/name) allowed to deploy"
+# New repositories get ID-based subjects (owner@id/repo@id) that survive renames and cannot be claimed by a later namespace owner, and the IDs are public. https://docs.github.com/en/actions/reference/security/oidc
+variable "github_repository_subject" {
+  description = "Repository part of the GitHub OIDC subject (the sub_claim_prefix without the repo: prefix) allowed to deploy"
   type        = string
-  default     = "breizeway/ecs-fargate-terraform-demo"
+  default     = "breizeway@70126993/ecs-fargate-terraform-demo@1450591666"
 }
