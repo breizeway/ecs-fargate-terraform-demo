@@ -1,23 +1,27 @@
 # ecs-fargate-terraform-demo
 
-A small Python web service used to practise building a container image and
-deploying it to AWS ECS Fargate with OpenTofu (Terraform-compatible).
+A small Python web service, packaged as a container image and deployed to AWS ECS
+Fargate with [OpenTofu](https://opentofu.org/) (Terraform-compatible), behind a
+load balancer with HTTPS. A learning project.
 
-> **Status:** working end to end (image, infrastructure, CI/CD, HTTPS). An
-> architecture diagram is the main thing left; see the [roadmap](#roadmap).
+> **Status:** working end to end (image, infrastructure, CI/CD, HTTPS). Still to do:
+> an architecture diagram.
 
 ## The service
 
-A Flask app served by gunicorn. It exposes two endpoints:
+A Flask app served by gunicorn.
 
-| Endpoint | Purpose |
+| Endpoint | Returns |
 |---|---|
-| `GET /health` | Liveness check. Returns `{"status": "ok"}`. |
-| `GET /` | Reports where the process runs: the release (`version`), `identity` (uid, pid, parent pid), the container's whole `os` release file, `system` (uname: `node` is which container answered, `release` the host's kernel) and the Python version. |
+| `GET /health` | `{"status": "ok"}` (the load balancer's health check) |
+| `GET /` | Where the service is running, as JSON: `version`, user and process ids, `os`, `system` and the Python version. `system.node` is the name of the container that answered, so it alternates when two are running. |
+
+Environment variables (all optional): `PORT` (8000), `WEB_CONCURRENCY` (2 gunicorn
+workers), `GUNICORN_THREADS` (4), `SERVICE_VERSION` (`dev`, shown by `GET /`).
 
 ## Run it locally
 
-Requirements: [uv](https://docs.astral.sh/uv/) and Python 3.14.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.14.
 
 ```bash
 uv sync                                  # create .venv from uv.lock
@@ -28,7 +32,7 @@ curl localhost:8000/health
 
 ## Container image
 
-Requirements: Docker. [Trivy](https://trivy.dev/) for `make scan`.
+Requires Docker, and [Trivy](https://trivy.dev/) for `make scan`.
 
 ```bash
 make test    # run the unit tests inside the image build (fails the build if they fail)
@@ -37,166 +41,92 @@ make run     # run it on http://localhost:8000
 make scan    # vulnerability scan
 ```
 
-The [Dockerfile](Dockerfile) has three stages: `builder` (dependencies), `test`
-(runs pytest) and `runtime` (the image that ships). Design choices:
+The [Dockerfile](Dockerfile) has three stages: `builder` (installs dependencies),
+`test` (runs pytest) and `runtime` (the image that ships). The image runs as a
+non-root user, installs dependencies from `uv.lock` (uv and pip are not in the
+final image), and uses an exec-form `CMD` so gunicorn receives the stop signal
+directly (in a test, `docker stop` finished in well under a second with exit
+code 0).
 
-- **`python:3.14-slim` (Debian), not Alpine** — most Python binary wheels target
-  glibc; musl often forces source builds.
-- **Dependencies from `uv.lock`**, installed with `--locked` so a stale lockfile
-  fails the build. uv and pip are not present in the final image.
-- **Runs as a non-root user** (uid/gid 10001).
-- **Exec-form `CMD`** so gunicorn is PID 1 and receives SIGTERM directly;
-  `docker stop` returns in well under a second with exit code 0.
-- **Dependency layer is cached** and only rebuilt when `pyproject.toml` or
-  `uv.lock` change.
-- No Dockerfile `HEALTHCHECK`: Amazon ECS ignores it. Health checks come from
-  the load balancer's target group.
-
-### Vulnerability scan policy
-
-`make scan` fails the build on **fixable** HIGH/CRITICAL findings. The Debian
-base image still carries HIGH findings for which no patch exists yet; those are
-deliberately not blocking, and are reviewed by rebuilding on a schedule rather
-than by suppressing them. Run `trivy image --severity HIGH,CRITICAL
-ecs-fargate-demo:dev` to see the full list.
-
-### Configuration
-
-All optional environment variables:
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `PORT` | `8000` | Port to listen on |
-| `WEB_CONCURRENCY` | `2` | gunicorn worker processes |
-| `GUNICORN_THREADS` | `4` | Threads per worker |
-| `SERVICE_VERSION` | `dev` | Version label shown by `GET /` |
-
-Worker count is set explicitly rather than derived from the CPU count: inside a
-container, `os.cpu_count()` reports the host's CPUs, not the container's limit.
+**Scan policy:** `make scan` fails on HIGH/CRITICAL findings that already have a
+patch. The Debian base image can also carry HIGH findings with no patch yet; those
+do not fail the build, because rebuilding cannot remove them. Nothing is
+suppressed and nothing re-scans on a timer, so re-run the scan after each base
+image update. To list everything: `trivy image --severity HIGH,CRITICAL ecs-fargate-demo:dev`.
 
 ## Infrastructure
 
-Infrastructure is defined with [OpenTofu](https://opentofu.org/) (HCL is
-compatible with Terraform). It needs OpenTofu 1.10 or newer, AWS credentials,
-and (for `trivy config`) Trivy.
+Needs OpenTofu 1.10 or newer and AWS credentials. Two stacks:
 
-### State bootstrap
+- `infra/bootstrap/`: the S3 bucket that stores state, and the IAM role GitHub
+  Actions uses to deploy. Applied once, by hand, with local state (the bucket
+  can't hold its own state before it exists).
+- `infra/`: everything else. One file per AWS area: `network.tf`,
+  `security_groups.tf`, `ecr.tf`, `load_balancer.tf`, `certificate.tf`, `iam.tf`,
+  `ecs.tf`.
 
-OpenTofu records what it manages in a *state file*. The main stack stores its
-state remotely in S3 so it is shared, versioned and locked. `infra/bootstrap` creates that bucket once:
+What the main stack creates:
 
-```bash
-cd infra/bootstrap
-tofu init
-tofu apply
-tofu output state_bucket_name     # the main stack is pointed at this bucket
-```
+- A VPC with two public subnets in different availability zones.
+- Security groups: the load balancer accepts web traffic from the internet; the app
+  accepts traffic only from the load balancer.
+- An ECR repository with immutable tags and scan-on-push.
+- An Application Load Balancer: HTTPS on 443, and port 80 redirects to it.
+- An ECS Fargate service: two ARM64 tasks (one per zone) with rolling deployments
+  and automatic rollback of a version that keeps failing. Logs go to CloudWatch.
+- An ACM certificate for the site's domain.
 
-The bucket has versioning, server-side encryption (AES256), all public access
-blocked, and a policy that denies non-TLS requests. `prevent_destroy` guards it
-against accidental deletion.
+Public subnets with no NAT gateway keep the cost down. A production setup should
+use private subnets with VPC endpoints or a NAT gateway.
 
-Design notes:
-
-- **Chicken-and-egg:** the bucket cannot hold its own state before it exists, so
-  this stack uses a local state file (gitignored). If that file is lost, the
-  bucket survives and can be re-attached with `tofu import`.
-- **No account-specific names in the repo:** the bucket name has a random suffix
-  and is supplied to the main stack at `init` time, not committed.
-- **Accepted exception:** S3-managed keys (AES256) are used instead of a
-  customer-managed KMS key. `trivy config infra` would otherwise flag this
-  (AWS-0132); the exception is recorded next to the resource. A production or
-  regulated setup should use a KMS key.
-
-Check the code with `tofu fmt -check`, `tofu validate` and
-`trivy config --severity HIGH,CRITICAL infra`.
-
-### Main stack: network and image registry
-
-`infra/` holds the main stack, with its state stored in the bootstrap bucket.
+### Set up
 
 ```bash
-cd infra
-cp backend.hcl.example backend.hcl    # set `bucket` to the bootstrap output
+cd infra/bootstrap && tofu init && tofu apply     # state bucket, once
+tofu output state_bucket_name
+
+cd ..                                             # now in infra/
+cp backend.hcl.example backend.hcl                # set `bucket` to the output above
 tofu init -backend-config=backend.hcl
-tofu plan
-tofu apply
 ```
 
-It creates:
+### Deploy by hand
 
-- **A VPC** with two public subnets in different availability zones, an internet
-  gateway and a route table.
-- **Security groups:** the load balancer accepts HTTP (which only redirects) and
-  HTTPS from the internet and may only talk to the app; the app accepts traffic
-  *only from the load balancer's security group* and may only make outbound
-  HTTPS requests. The VPC's default security group is emptied.
-- **An ECR repository** with immutable tags (a pushed tag can never be
-  overwritten), scan-on-push and a lifecycle policy that keeps the last 10 images.
-
-Push the image once the registry exists (needs an AWS login and Docker):
+`image_tag` has no default, so every deploy names the exact image version. The
+registry must exist before an image can be pushed to it, so the first deploy
+takes three steps:
 
 ```bash
-AWS_PROFILE=<profile> make push              # tag: local-<timestamp>
-AWS_PROFILE=<profile> make push TAG=v1       # or choose a tag
-```
-
-Design trade-offs, recorded as inline scanner exceptions next to the resources:
-
-- **No NAT gateway.** A NAT gateway costs roughly $30+/month, so tasks will run in
-  public subnets and reach ECR and CloudWatch over the internet gateway
-  (egress limited to port 443). A production setup should use private subnets with
-  VPC endpoints or a NAT gateway so tasks have no public IP.
-
-The VPC, subnets, internet gateway, route table and security groups are free;
-ECR storage is a few cents per GB-month.
-
-### Load balancer and ECS service
-
-The rest of the main stack runs the container:
-
-- **Application Load Balancer** across both subnets, with a target group that
-  health-checks `GET /health` every 15 seconds.
-- **ECS cluster, task definition and service** on Fargate: two tasks (one per
-  availability zone), ARM64, 0.25 vCPU / 0.5 GB each, registered with the load
-  balancer. Rolling deployments never drop below the desired count, and a
-  deployment circuit breaker rolls back a version that keeps failing.
-- **One IAM role:** an *execution role* (used by ECS to pull this repository's
-  image and write this log group, nothing broader). The application makes no
-  AWS calls, so it has no task role.
-- **Hardening:** read-only root filesystem, non-root user, security group that
-  only admits the load balancer, logs to CloudWatch with 14-day retention.
-
-#### Deploy
-
-`image_tag` has no default, so every deployment names the exact image version.
-The registry must exist before an image can be pushed to it, so the first deploy
-is done in three steps:
-
-```bash
-cd infra
 tofu apply -target=aws_ecr_repository.app -target=aws_ecr_lifecycle_policy.app \
   -var image_tag=none                                   # 1. registry only
 cd .. && AWS_PROFILE=<profile> make push TAG=v1         # 2. build and push the image
-cd infra && tofu apply -var image_tag=v1                # 3. everything else (~5 min, plus the domain step below)
-tofu output app_url                                     # open this in a browser
+cd infra && tofu apply -var image_tag=v1                # 3. everything else
+tofu output app_url
 ```
 
-(`-target` is used here only to break the registry/image ordering. Later
-deployments are a single `make push` followed by `tofu apply -var image_tag=<tag>`.)
+Later deploys are one `make push TAG=<tag>` followed by `tofu apply -var image_tag=<tag>`.
 
-Refreshing the page shows a different `system.node` as the load balancer alternates
-between the two tasks. `make check` does the same from the terminal (6 requests).
+While deployed, `curl https://<domain_name>/` returns the `GET /` JSON, and
+`make check` makes 6 requests so you can see `system.node` alternate.
 
-#### Custom domain and HTTPS
+### Deploy with GitHub Actions
+
+Pushing a tag like `v6` (on a commit that is on `main`) runs
+`.github/workflows/deploy.yml`: tests, scan, push to ECR, `tofu plan`, then
+`tofu apply` after a manual approval (the `production` environment), then a smoke
+test of the live site. AWS access is a short-lived OIDC credential; no keys are
+stored. It needs two repository secrets, `AWS_DEPLOY_ROLE_ARN` and
+`TF_STATE_BUCKET`. `ci.yml` runs the tests, the image scan and the OpenTofu checks
+(`fmt`, `validate`, `trivy config`) on every pull request.
+
+### Custom domain and HTTPS
 
 The site is served at `https://<domain_name>` (default
-`ecs-fargate-terraform-demo.tannor.net`, set in `variables.tf`); plain HTTP
-redirects to it. The parent domain's DNS is hosted outside AWS (its provider has
-no `NS` record type), so two `CNAME` records are added there by hand:
+`ecs-fargate-terraform-demo.tannor.net`, in `variables.tf`). The parent domain's DNS
+is hosted outside AWS and its provider has no `NS` record type, so two `CNAME`
+records are added by hand:
 
-1. `tofu apply` requests an ACM certificate, then waits for it to validate (the
-   AWS provider allows up to 75 minutes).
+1. `tofu apply` requests the ACM certificate and waits for it to validate.
 2. While it waits, read the validation record and add it as a `CNAME`:
    ```bash
    CERT=$(aws acm list-certificates --region us-west-2 \
@@ -208,28 +138,26 @@ no `NS` record type), so two `CNAME` records are added there by hand:
 3. When the apply finishes, add a second `CNAME` from the site's name to
    `tofu output -raw load_balancer_dns_name`.
 
-Keep the validation record: ACM uses it to renew the certificate. Remove both
-records when the stack is torn down.
+Keep the validation record: ACM uses it to renew the certificate.
 
-#### Tear down
+### Tear down
 
 ```bash
 cd infra && tofu destroy -var image_tag=v1
 ```
 
-This removes every resource in the main stack, including the ECR repository and
-its images and the certificate. The state bucket (bootstrap stack) is left in
-place, and the two `CNAME` records at the parent domain's DNS provider must be
-removed by hand.
+This removes the whole main stack, including the ECR repository, its images and
+the certificate. The state bucket is left in place, and the two `CNAME` records
+must be removed by hand.
 
-#### Cost
+### Cost
 
-Billed by the hour while deployed: roughly **$0.06–0.07/hour (about $1.50–1.70 a
-day)** in us-west-2, based on list prices (Nov 2026): load balancer $0.0225/h plus
-usage, $0.005/h for each public IPv4 address (the load balancer uses two, the
-tasks one each), and Fargate ARM at $0.03238 per vCPU-hour and $0.00356 per
-GB-hour. The ACM certificate is free. Verify against current AWS pricing, and
-tear the stack down when not in use.
+Roughly **$0.06–0.07 an hour (about $1.50–1.70 a day)** in us-west-2 while
+deployed, from list prices in Nov 2026: load balancer $0.0225/h plus usage,
+$0.005/h per public IPv4 address (two for the load balancer, one per task), and
+Fargate ARM at $0.03238 per vCPU-hour and $0.00356 per GB-hour. The ACM
+certificate is free. Check current AWS pricing, and tear the stack down when not
+in use.
 
 ## Project layout
 
@@ -237,33 +165,10 @@ tear the stack down when not in use.
 app/main.py        Flask application
 tests/             Unit tests (pytest)
 gunicorn.conf.py   gunicorn settings
-pyproject.toml     Dependencies (ranges); uv.lock pins the exact versions
+pyproject.toml     Dependencies; uv.lock pins the exact versions
 Dockerfile         Multi-stage image: builder -> test -> runtime
 Makefile           test / build / run / scan / push / check shortcuts
-infra/bootstrap/   OpenTofu: S3 bucket for remote state
-infra/             OpenTofu main stack (one file per AWS service area, see below)
+infra/bootstrap/   OpenTofu: state bucket and the GitHub deploy role
+infra/             OpenTofu main stack
+.github/workflows/ ci.yml (checks) and deploy.yml (release on a v* tag)
 ```
-
-### Where things live (`infra/`)
-
-| File | What it configures |
-|---|---|
-| `network.tf` | VPC, two public subnets, internet gateway, route table |
-| `security_groups.tf` | Firewall rules: who may connect to what |
-| `ecr.tf` | Image repository and its lifecycle policy |
-| `load_balancer.tf` | Public entry point: load balancer, HTTP redirect and HTTPS listeners, target group with the health check |
-| `certificate.tf` | The HTTPS certificate and the wait for its validation |
-| `iam.tf` | The role ECS uses to pull the image and write logs |
-| `ecs.tf` | Log group, cluster, task definition and service (keeps two copies running) |
-| `versions.tf`, `variables.tf`, `outputs.tf`, `main.tf` | Tool and provider versions with the state backend, inputs, outputs, and the provider |
-
-## Roadmap
-
-- [x] Flask service, tests, locked dependencies
-- [x] Container image (multi-stage Dockerfile, non-root, vulnerability scan)
-- [x] State backend bootstrap (S3 bucket with versioning, encryption, public access blocked)
-- [x] Network and image registry (VPC, subnets, security groups, ECR)
-- [x] Load balancer and ECS Fargate service
-- [x] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
-- [x] HTTPS on a custom subdomain (ACM certificate, DNS validation)
-- [ ] Architecture diagram, cost notes and design trade-offs
