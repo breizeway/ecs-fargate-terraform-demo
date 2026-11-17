@@ -4,8 +4,7 @@ A small Python web service, packaged as a container image and deployed to AWS EC
 Fargate with [OpenTofu](https://opentofu.org/) (Terraform-compatible), behind a
 load balancer with HTTPS. A learning project.
 
-> **Status:** working end to end (image, infrastructure, CI/CD, HTTPS). Still to do:
-> an architecture diagram.
+> **Status:** working end to end (image, infrastructure, CI/CD, HTTPS).
 
 ## The service
 
