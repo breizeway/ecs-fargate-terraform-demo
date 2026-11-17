@@ -29,7 +29,7 @@ resource "aws_security_group" "app" {
   }
 }
 
-# A public website must accept traffic from anywhere; HTTPS arrives with the custom domain. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
+# The site is public, so any visitor may connect; port 80 is HTTP until there's a domain for HTTPS. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
   description       = "HTTP from the internet"
