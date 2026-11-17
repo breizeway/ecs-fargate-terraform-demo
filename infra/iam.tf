@@ -25,8 +25,7 @@ resource "aws_iam_role" "task_execution" {
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
 }
 
-# Accepted exception: GetAuthorizationToken cannot be limited to a resource, so it needs "*". https://docs.aws.amazon.com/AmazonECR/latest/userguide/security_iam_id-based-policy-examples.html
-#trivy:ignore:AWS-0057
+# GetAuthorizationToken is account-wide and takes no resource, so it needs "*". https://docs.aws.amazon.com/AmazonECR/latest/userguide/security_iam_id-based-policy-examples.html
 data "aws_iam_policy_document" "task_execution" {
   statement {
     sid       = "EcrLogin"

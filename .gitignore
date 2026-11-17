@@ -13,7 +13,6 @@ __pycache__/
 *.pem
 *.key
 
-# State and plans can contain secrets, so they are never committed (the dependency lock file is). https://opentofu.org/docs/language/state/sensitive-data/
 .terraform/
 *.tfstate
 *.tfstate.*

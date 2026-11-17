@@ -29,8 +29,7 @@ resource "aws_security_group" "app" {
   }
 }
 
-# Accepted exception: a public website must accept the internet; HTTPS arrives with the custom domain. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
-#trivy:ignore:AWS-0107
+# A public website must accept traffic from anywhere; HTTPS arrives with the custom domain. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
   description       = "HTTP from the internet"
