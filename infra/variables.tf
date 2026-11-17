@@ -66,3 +66,10 @@ variable "az_count" {
     error_message = "A load balancer needs subnets in at least 2 availability zones."
   }
 }
+
+# The name's DNS records live at the parent domain's provider, outside AWS, so they are added by hand. https://docs.aws.amazon.com/acm/latest/userguide/dns-validation.html
+variable "domain_name" {
+  description = "Subdomain that serves the site over HTTPS"
+  type        = string
+  default     = "ecs-fargate-terraform-demo.tannor.net"
+}

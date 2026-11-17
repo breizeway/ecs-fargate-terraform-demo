@@ -29,7 +29,7 @@ resource "aws_security_group" "app" {
   }
 }
 
-# The site is public, so any visitor may connect; port 80 is HTTP until there's a domain for HTTPS. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
+# Port 80 stays open only so visitors are redirected to HTTPS. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/rule-action-types.html
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
   description       = "HTTP from the internet"
@@ -37,6 +37,16 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+}
+
+# The site is public, so any visitor may connect. https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-update-security-groups.html
+resource "aws_vpc_security_group_ingress_rule" "alb_https" {
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTPS from the internet"
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
 }
 
 resource "aws_vpc_security_group_egress_rule" "alb_to_app" {

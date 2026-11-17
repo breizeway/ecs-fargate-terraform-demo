@@ -85,5 +85,5 @@ resource "aws_ecs_service" "app" {
   health_check_grace_period_seconds = 30
 
   # Nothing references the listener, so the order is stated: it must exist before the service registers. https://opentofu.org/docs/language/meta-arguments/depends_on/
-  depends_on = [aws_lb_listener.http]
+  depends_on = [aws_lb_listener.https]
 }
