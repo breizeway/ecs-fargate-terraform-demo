@@ -52,9 +52,6 @@ jobs:
           tofu -chdir=infra init -input=false -backend-config=backend.hcl
 
       # Action logs are public, so the load balancer address is masked before anything prints it. https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands
-      - name: Hide the load balancer address in logs
-        run: echo "::add-mask::$(tofu -chdir=infra output -raw app_url | sed 's#^http://##')"
-
       - run: make test
       - run: make scan
 

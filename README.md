@@ -128,8 +128,8 @@ It creates:
 
 - **A VPC** with two public subnets in different availability zones, an internet
   gateway and a route table.
-- **Security groups:** the load balancer accepts HTTP from the internet and may
-  only talk to the app; the app accepts traffic *only from the load balancer's
+- **Security groups:** the load balancer accepts HTTP (which only redirects) and HTTPS from the
+  internet and may only talk to the app; the app accepts traffic *only from the load balancer's
   security group* and may only make outbound HTTPS requests. The VPC's default
   security group is emptied.
 - **An ECR repository** with immutable tags (a pushed tag can never be
@@ -148,8 +148,6 @@ Design trade-offs, recorded as inline scanner exceptions next to the resources:
   public subnets and reach ECR and CloudWatch over the internet gateway
   (egress limited to port 443). A production setup should use private subnets with
   VPC endpoints or a NAT gateway so tasks have no public IP.
-- **HTTP only** on the load balancer (see below). HTTPS needs a certificate and a
-  domain name.
 
 The VPC, subnets, internet gateway, route table and security groups are free;
 ECR storage is a few cents per GB-month.
@@ -181,7 +179,7 @@ cd infra
 tofu apply -target=aws_ecr_repository.app -target=aws_ecr_lifecycle_policy.app \
   -var image_tag=none                                   # 1. registry only
 cd .. && AWS_PROFILE=<profile> make push TAG=v1         # 2. build and push the image
-cd infra && tofu apply -var image_tag=v1                # 3. everything else (~5 min)
+cd infra && tofu apply -var image_tag=v1                # 3. everything else (~5 min, plus the domain step below)
 tofu output app_url                                     # open this in a browser
 ```
 
@@ -191,6 +189,24 @@ deployments are a single `make push` followed by `tofu apply -var image_tag=<tag
 Refreshing the page shows a different `hostname` as the load balancer alternates
 between the two tasks. `make check` does the same from the terminal (6 requests).
 
+#### Custom domain and HTTPS
+
+The site is served at `https://<domain_name>` (default `demo.tannor.net`, set in
+`variables.tf`); plain HTTP redirects to it. The parent domain's DNS is hosted
+outside AWS, so only the subdomain is delegated to Route 53, once per zone:
+
+1. `tofu apply` creates the hosted zone and an ACM certificate, then waits for
+   the certificate to validate (the AWS provider allows up to 75 minutes).
+2. While it waits, list the zone's name servers
+   (`aws route53 list-hosted-zones-by-name --dns-name <domain_name>`, then
+   `aws route53 get-hosted-zone --id <zone id>`) and add them as `NS` records
+   for the subdomain at the parent domain's DNS provider.
+3. Validation completes, the HTTPS listener is created, and the apply finishes.
+   `tofu output name_servers` shows the same list afterwards.
+
+A destroyed and re-created zone gets **new** name servers, so update or remove
+those `NS` records whenever the stack is rebuilt or torn down.
+
 #### Tear down
 
 ```bash
@@ -198,7 +214,8 @@ cd infra && tofu destroy -var image_tag=v1
 ```
 
 This removes every resource in the main stack, including the ECR repository and
-its images. The state bucket (bootstrap stack) is left in place.
+its images, and the Route 53 zone. The state bucket (bootstrap stack) is left in
+place, and the `NS` records at the parent domain's DNS provider must be removed by hand.
 
 #### Cost
 
@@ -206,7 +223,7 @@ Billed by the hour while deployed: roughly **$0.06–0.07/hour (about $1.50–1.
 day)** in us-west-2, based on list prices (Nov 2026): load balancer $0.0225/h plus
 usage, $0.005/h for each public IPv4 address (the load balancer uses two, the
 tasks one each), and Fargate ARM at $0.03238 per vCPU-hour and $0.00356 per
-GB-hour. Verify against current AWS pricing, and tear the stack down when not in
+GB-hour, plus a Route 53 hosted zone (about $0.50/month, billed per zone). Verify against current AWS pricing, and tear the stack down when not in
 use.
 
 ## Project layout
@@ -229,7 +246,8 @@ infra/             OpenTofu main stack (one file per AWS service area, see below
 | `network.tf` | VPC, two public subnets, internet gateway, route table |
 | `security_groups.tf` | Firewall rules: who may connect to what |
 | `ecr.tf` | Image repository and its lifecycle policy |
-| `load_balancer.tf` | Public entry point: load balancer, listener, target group with the health check |
+| `load_balancer.tf` | Public entry point: load balancer, HTTP redirect and HTTPS listeners, target group with the health check |
+| `dns.tf` | Route 53 zone for the subdomain, the HTTPS certificate and its validation, the record that points at the load balancer |
 | `iam.tf` | The role ECS uses to pull the image and write logs |
 | `ecs.tf` | Log group, cluster, task definition and service (keeps two copies running) |
 | `versions.tf`, `variables.tf`, `outputs.tf`, `main.tf` | Tool and provider versions with the state backend, inputs, outputs, and the provider |
@@ -241,5 +259,6 @@ infra/             OpenTofu main stack (one file per AWS service area, see below
 - [x] State backend bootstrap (S3 bucket with versioning, encryption, public access blocked)
 - [x] Network and image registry (VPC, subnets, security groups, ECR)
 - [x] Load balancer and ECS Fargate service
-- [ ] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
+- [x] CI/CD with GitHub Actions (OIDC, no stored AWS keys)
+- [x] HTTPS on a custom subdomain (ACM certificate, Route 53)
 - [ ] Architecture diagram, cost notes and design trade-offs

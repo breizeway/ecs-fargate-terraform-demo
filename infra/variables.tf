@@ -66,3 +66,10 @@ variable "az_count" {
     error_message = "A load balancer needs subnets in at least 2 availability zones."
   }
 }
+
+# The subdomain is delegated to Route 53 at the parent domain's DNS provider, which is outside AWS. https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingNewSubdomain.html
+variable "domain_name" {
+  description = "Subdomain that serves the site over HTTPS"
+  type        = string
+  default     = "demo.tannor.net"
+}
